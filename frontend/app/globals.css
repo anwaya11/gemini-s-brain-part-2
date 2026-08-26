@@ -1,0 +1,194 @@
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+:root {
+  --background: #030303;
+  --foreground: #f0f4f8;
+  --cyber-black: #030303;
+  --cyber-dark: #06090e;
+  --cyber-cyan: #00f0ff;
+  --cyber-magenta: #ff003c;
+  --cyber-green: #00ff66;
+  --cyber-amber: #ffb703;
+  --cyber-border: rgba(0, 240, 255, 0.12);
+  --cyber-border-active: rgba(0, 240, 255, 0.4);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Geist", sans-serif;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-attachment: fixed;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+}
+
+/* ==========================================================================
+   Custom Cyberpunk Thin Scrollbars (4px)
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(3, 3, 3, 0.8);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.25);
+  border-radius: 2px;
+  transition: all 0.2s ease-in-out;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.7);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.8);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 240, 255, 0.25) rgba(3, 3, 3, 0.8);
+}
+
+/* ==========================================================================
+   Glassmorphic & HUD Cyberpunk Classes
+   ========================================================================== */
+.glass-card {
+  background: rgba(10, 15, 25, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 240, 255, 0.12);
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.02), 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+  position: relative;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(0, 240, 255, 0.25);
+  box-shadow: inset 0 0 25px rgba(0, 240, 255, 0.04), 0 12px 40px 0 rgba(0, 0, 0, 0.75);
+}
+
+.glass-panel-glow {
+  background: rgba(6, 9, 14, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.1), inset 0 0 15px rgba(0, 240, 255, 0.04);
+}
+
+.glass-panel-magenta {
+  background: rgba(20, 5, 10, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 0, 60, 0.25);
+  box-shadow: 0 0 25px rgba(255, 0, 60, 0.12), inset 0 0 15px rgba(255, 0, 60, 0.04);
+}
+
+/* ==========================================================================
+   HUD Sci-Fi Corner Borders
+   ========================================================================== */
+.hud-corner-border {
+  position: relative;
+}
+
+.hud-corner-border::before,
+.hud-corner-border::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.hud-corner-border::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid #00f0ff;
+  border-left: 2px solid #00f0ff;
+}
+
+.hud-corner-border::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid #00f0ff;
+  border-right: 2px solid #00f0ff;
+}
+
+.hud-corner-border-magenta::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid #ff003c;
+  border-left: 2px solid #ff003c;
+}
+
+.hud-corner-border-magenta::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid #ff003c;
+  border-right: 2px solid #ff003c;
+}
+
+/* ==========================================================================
+   Text Glow & Cyberpunk Accents
+   ========================================================================== */
+.glow-text-cyan {
+  color: #00f0ff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5), 0 0 20px rgba(0, 240, 255, 0.2);
+}
+
+.glow-text-magenta {
+  color: #ff003c;
+  text-shadow: 0 0 10px rgba(255, 0, 60, 0.5), 0 0 20px rgba(255, 0, 60, 0.2);
+}
+
+.glow-text-green {
+  color: #00ff66;
+  text-shadow: 0 0 10px rgba(0, 255, 102, 0.5), 0 0 20px rgba(0, 255, 102, 0.2);
+}
+
+.glow-text-amber {
+  color: #ffb703;
+  text-shadow: 0 0 10px rgba(255, 183, 3, 0.5), 0 0 20px rgba(255, 183, 3, 0.2);
+}
+
+/* Scanline Effect Overlay */
+.scanline-overlay {
+  position: relative;
+  overflow: hidden;
+}
+
+.scanline-overlay::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 240, 255, 0.02) 50%
+  ),
+  linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.01),
+    rgba(0, 255, 0, 0.005),
+    rgba(0, 0, 255, 0.01)
+  );
+  z-index: 2;
+  background-size: 100% 2px, 3px 100%;
+  pointer-events: none;
+}
