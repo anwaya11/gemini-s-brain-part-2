@@ -32,11 +32,13 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any
-
-from groq import AsyncGroq
+try:
+    from groq import AsyncGroq
+except ImportError:
+    AsyncGroq = None
 
 from backend.config import settings
+from backend.fixtures.loader import is_demo_mode, get_demo_fixture, simulate_agent_latency
 from backend.integrations.tavily_client import search_ioc_context
 from backend.integrations.swytchcode_client import SwytchcodeConnector
 
@@ -100,6 +102,9 @@ async def _call_llm_synthesis(ioc: str, tavily_answer: str, reputation: dict[str
     Ask the LLM to synthesise Tavily + reputation data for a single IOC.
     Returns the parsed JSON dict or raises on failure.
     """
+    if AsyncGroq is None:
+        raise RuntimeError("Groq SDK is not installed in the environment.")
+
     user_msg = (
         f"ioc: {ioc}\n"
         f"tavily_answer: {tavily_answer}\n"
@@ -148,16 +153,7 @@ class ThreatIntelAgent:
     """
     Enriches IOCs with live threat intelligence by querying Tavily and
     Swytchcode in parallel, then synthesising a verdict with an LLM.
-
-    Usage::
-
-        agent = ThreatIntelAgent()
-
-        # Single IOC
-        report = await agent.enrich("198.51.100.42")
-
-        # Multiple IOCs
-        reports = await agent.enrich_many(["198.51.100.42", "CVE-2024-12345"])
+    In DEMO_MODE, returns deterministic high-fidelity fixtures with simulated latency.
     """
 
     def __init__(self) -> None:
@@ -166,22 +162,30 @@ class ThreatIntelAgent:
     async def enrich(self, ioc: str) -> dict[str, Any]:
         """
         Enrich a single IOC.
-
-        Parameters
-        ----------
-        ioc:
-            An IP address, CVE identifier, or domain.
-
-        Returns
-        -------
-        dict with keys:
-            - ``ioc``              – the queried indicator
-            - ``confidence_score`` – float 0.0–1.0 (likelihood of maliciousness)
-            - ``threat_context``   – narrative summary string
-            - ``tags``             – list of descriptive labels
-            - ``sources``          – raw data from Tavily and Swytchcode
         """
         logger.info("ThreatIntelAgent.enrich | ioc=%s", ioc)
+
+        # ── 1. DEMO_MODE Fast Deterministic Return ─────────────────────────
+        if is_demo_mode():
+            await simulate_agent_latency(200, 380)
+            fixture = get_demo_fixture(ioc)
+            if fixture:
+                rep = fixture.get("reputation", {})
+                tav = fixture.get("tavily", {})
+                conf = float(fixture.get("confidence_score", rep.get("malicious_score", 0.85)))
+                tags = rep.get("tags", ["malicious", "virustotal-flagged"])
+                summary_text = tav.get("answer") or tav.get("ioc_summary", f"Threat intelligence for {ioc}")
+                return {
+                    "ioc": ioc,
+                    "confidence_score": conf,
+                    "threat_context": summary_text,
+                    "tags": tags,
+                    "sources": {
+                        "tavily_answer": summary_text,
+                        "reputation_score": rep.get("malicious_score", conf),
+                        "reputation_tags": tags,
+                    },
+                }
 
         # Fan out to both sources concurrently
         tavily_answer, reputation = await asyncio.gather(

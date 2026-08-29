@@ -21,6 +21,12 @@ from pydantic import BaseModel, Field
 
 from backend.config import settings
 from backend.deception.decoy_routes import decoy_router
+from backend.fixtures.loader import (
+    is_demo_mode,
+    set_demo_mode,
+    get_demo_fixture,
+    simulate_agent_latency,
+)
 from backend.ml.edge_filter import EdgeFilter
 
 logging.basicConfig(level=logging.INFO)
@@ -139,7 +145,7 @@ class ConnectionManager:
         self._active_connections.append(websocket)
         logger.info(f"[WS] Client connected. Total active: {len(self._active_connections)}")
 
-        # Send initial handshake welcome with current state snapshots
+        # Send initial handshake welcome with current state snapshots & demo mode
         await self.send_to(
             websocket,
             {
@@ -150,6 +156,7 @@ class ConnectionManager:
                     "config": SOC_CONFIG,
                     "incidents": INCIDENTS,
                     "graph": TOPOLOGY_GRAPH,
+                    "demo_mode": is_demo_mode(),
                 },
             },
         )
@@ -346,9 +353,15 @@ async def ingest_log(payload: RawLogPayload):
     if action in ("APPROVAL_REQ", "ESCALATED", "DECEPTION_ACTIVE") and xgb_score >= autonomy_cutoff:
         existing_inc = next((inc for inc in INCIDENTS if inc["source_ip"] == source_ip and inc["status"] == "PENDING_APPROVAL"), None)
         if not existing_inc:
+            fixture = get_demo_fixture(source_ip) if is_demo_mode() else None
             attack_title = (
-                payload.attack_type
+                (fixture.get("attack_type") if fixture else None)
+                or payload.attack_type
                 or ("Honeypot Decoy Hit (" + endpoint + ")" if is_decoy else f"Anomalous Exploitation on {endpoint}")
+            )
+            mitre_tech = (
+                (fixture.get("mitre_technique") if fixture else None)
+                or ("T1190 – Exploit Public-Facing Application" if not is_decoy else "T1046 – Network Service Discovery")
             )
             created_incident = {
                 "id": f"INC-2026-{uuid.uuid4().hex[:4].upper()}",
@@ -358,7 +371,7 @@ async def ingest_log(payload: RawLogPayload):
                 "risk_score": round(xgb_score, 3),
                 "confidence": round(min(xgb_score + 0.05, 0.98), 2),
                 "status": "PENDING_APPROVAL",
-                "mitre_technique": "T1190 – Exploit Public-Facing Application" if not is_decoy else "T1046 – Network Service Discovery",
+                "mitre_technique": mitre_tech,
                 "decoy_path": endpoint if is_decoy else "/decoy/db-admin",
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
             }
@@ -397,19 +410,29 @@ async def ingest_log(payload: RawLogPayload):
     }
 
     # Chatter Broadcast
-    chatter_text = (
-        f"[TRIAGE] Anomaly score {xgb_score:.2f} flagged on {endpoint}. "
-        + ("Routing to honeypot trap." if is_decoy else f"Evaluating against Autonomy Cutoff ({autonomy_cutoff:.2f}).")
-    )
+    demo_fixture = get_demo_fixture(source_ip) if is_demo_mode() else None
+    if demo_fixture and "chatter" in demo_fixture and len(demo_fixture["chatter"]) > 0:
+        first_chat = demo_fixture["chatter"][0]
+        chatter_text = first_chat.get("reasoning", f"[TRIAGE] Anomaly score {xgb_score:.2f} flagged on {endpoint}.")
+        chat_agent = first_chat.get("agent", "TRIAGE")
+        chat_color = first_chat.get("tagColor", "#00f0ff")
+    else:
+        chatter_text = (
+            f"[TRIAGE] Anomaly score {xgb_score:.2f} flagged on {endpoint}. "
+            + ("Routing to honeypot trap." if is_decoy else f"Evaluating against Autonomy Cutoff ({autonomy_cutoff:.2f}).")
+        )
+        chat_agent = "DECEPTION" if is_decoy else "TRIAGE"
+        chat_color = "#ffb703" if is_decoy else "#00f0ff"
+
     chatter_event = {
         "type": "chatter",
         "data": {
             "id": f"chat-{uuid.uuid4().hex[:6]}",
-            "agent": "DECEPTION" if is_decoy else "TRIAGE",
+            "agent": chat_agent,
             "reasoning": chatter_text,
             "step": "triage_classification",
             "timestamp": time_str,
-            "tagColor": "#ffb703" if is_decoy else "#00f0ff",
+            "tagColor": chat_color,
         },
     }
 
@@ -424,6 +447,19 @@ async def ingest_log(payload: RawLogPayload):
     # Threat Intelligence Broadcast for exploits / CVEs
     if action in ("APPROVAL_REQ", "ESCALATED", "DECEPTION_ACTIVE"):
         cve_tag = "CVE-2024-3400" if "hipreport" in endpoint else ("SQLi-T1190" if "user" in endpoint or "db" in endpoint else "LFI-T1552")
+        if demo_fixture:
+            rep = demo_fixture.get("reputation", {})
+            tav = demo_fixture.get("tavily", {})
+            intel_tags = rep.get("tags") or [cve_tag, "active-stream", "tavily-enriched", "swytchcode-scanned"]
+            vt_val = rep.get("vt_score", f"{(xgb_score * 72):.0f}/72 Engines Flagged")
+            abuse_val = rep.get("abuse_score", f"{(xgb_score * 100):.0f}% Abuse Confidence")
+            intel_sum = tav.get("answer") or tav.get("ioc_summary") or f"Observed active {payload.attack_type or 'anomaly'} against {endpoint}."
+        else:
+            intel_tags = [cve_tag, "active-stream", "tavily-enriched", "swytchcode-scanned"]
+            vt_val = f"{(xgb_score * 72):.0f}/72 Engines Flagged"
+            abuse_val = f"{(xgb_score * 100):.0f}% Abuse Confidence"
+            intel_sum = f"Observed active {payload.attack_type or 'anomaly'} against {endpoint}. Enriched via Tavily QnA & Swytchcode threat feeds."
+
         intel_event = {
             "type": "intel",
             "data": {
@@ -431,10 +467,10 @@ async def ingest_log(payload: RawLogPayload):
                 "ioc": source_ip,
                 "type": "IPv4",
                 "confidence": round(xgb_score, 2),
-                "tags": [cve_tag, "active-stream", "tavily-enriched", "swytchcode-scanned"],
-                "vt_score": f"{(xgb_score * 72):.0f}/72 Engines Flagged",
-                "abuse_score": f"{(xgb_score * 100):.0f}% Abuse Confidence",
-                "summary": f"Observed active {payload.attack_type or 'anomaly'} against {endpoint}. Enriched via Tavily QnA & Swytchcode threat feeds.",
+                "tags": intel_tags,
+                "vt_score": vt_val,
+                "abuse_score": abuse_val,
+                "summary": intel_sum,
                 "source": "ThreatIntelAgent (Tavily + Swytchcode)",
                 "last_seen": time_str,
                 "isLive": True,
@@ -752,6 +788,45 @@ async def ws_console(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
+# ── Demo Mode Control Endpoints ───────────────────────────────────────────
+@app.get("/api/system/demo-mode", tags=["System"])
+async def get_demo_mode():
+    """Return current DEMO_MODE fallback status."""
+    return {
+        "status": "success",
+        "demo_mode": is_demo_mode(),
+    }
+
+
+@app.post("/api/system/demo-mode", tags=["System"])
+async def set_demo_mode_endpoint(payload: Dict[str, Any]):
+    """
+    Toggle DEMO_MODE runtime state and broadcast change to all connected WebSocket consoles.
+    Accepts {"enabled": bool} or {"demo_mode": bool}.
+    """
+    enabled = payload.get("enabled")
+    if enabled is None:
+        enabled = payload.get("demo_mode", True)
+
+    new_state = set_demo_mode(bool(enabled))
+    logger.info(f"[API] DEMO_MODE updated to: {new_state}")
+
+    # Broadcast demo mode event over /ws/console
+    await manager.broadcast({
+        "type": "demo_mode",
+        "data": {
+            "enabled": new_state,
+            "demo_mode": new_state,
+        },
+    })
+
+    return {
+        "status": "success",
+        "demo_mode": new_state,
+        "message": f"DEMO_MODE {'activated' if new_state else 'deactivated'}",
+    }
+
+
 # ── Health Probe ──────────────────────────────────────────────────────────
 @app.get("/health", tags=["System"])
 async def health_check():
@@ -761,6 +836,7 @@ async def health_check():
         "environment": settings.ENVIRONMENT,
         "active_ws_clients": manager.connection_count,
         "config": SOC_CONFIG,
+        "demo_mode": is_demo_mode(),
     }
 
 

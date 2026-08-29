@@ -28,11 +28,13 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Any
-
-from groq import AsyncGroq
+try:
+    from groq import AsyncGroq
+except ImportError:
+    AsyncGroq = None
 
 from backend.config import settings
+from backend.fixtures.loader import is_demo_mode, get_demo_fixture, simulate_agent_latency
 
 logger = logging.getLogger(__name__)
 
@@ -214,20 +216,7 @@ has been recorded in the graph database.
 class ReportingAgent:
     """
     Generates a Markdown forensic report from the full CHIMERA pipeline output.
-
-    Usage::
-
-        agent = ReportingAgent()
-        result = await agent.generate_report(
-            incident_id   = "INC-2024-0042",
-            triage_json   = triage_result,
-            intel_json    = intel_result,
-            risk_score    = 0.6120,
-            risk_assessment = risk_decision,
-            graph_edges   = [edge_record],
-            deception_path = "/decoy/db-admin",
-        )
-        print(result["summary_md"])
+    In DEMO_MODE, returns deterministic comprehensive reports with simulated latency.
     """
 
     async def generate_report(
@@ -242,32 +231,6 @@ class ReportingAgent:
     ) -> dict[str, Any]:
         """
         Generate a Markdown forensic report using an LLM.
-
-        Parameters
-        ----------
-        incident_id:
-            Unique incident identifier string (e.g. ``"INC-2024-0042"``).
-        triage_json:
-            Output dict from ``TriageAgent.classify()``.
-        intel_json:
-            Output dict from ``ThreatIntelAgent.enrich()``.
-        risk_score:
-            Float from ``RiskEngine.calculate_risk()``.
-        risk_assessment:
-            Output dict from ``RiskEngine.evaluate_action()``.
-        graph_edges:
-            List of ``graph_edges`` row dicts from ``DeceptionAgent``
-            (may be empty or ``None``).
-        deception_path:
-            The decoy path the attacker was routed to (e.g. ``"/decoy/db-admin"``).
-
-        Returns
-        -------
-        dict with keys:
-            - ``incident_id``  – echoed incident ID
-            - ``summary_md``   – full Markdown forensic report
-            - ``generated_at`` – ISO-8601 UTC timestamp
-            - ``model``        – LLM model used (or ``"fallback"`` if unavailable)
         """
         graph_edges = graph_edges or []
         generated_at = datetime.now(timezone.utc).isoformat()
@@ -277,6 +240,21 @@ class ReportingAgent:
             incident_id,
             risk_score,
         )
+
+        ioc = intel_json.get("ioc", "")
+
+        # ── 1. DEMO_MODE Fast Deterministic Return ─────────────────────────
+        if is_demo_mode():
+            await simulate_agent_latency(250, 400)
+            fixture = get_demo_fixture(ioc)
+            if fixture and "report" in fixture and "summary_md" in fixture["report"]:
+                summary_md = fixture["report"]["summary_md"].replace("{INCIDENT_ID}", incident_id)
+                return {
+                    "incident_id": incident_id,
+                    "summary_md": summary_md,
+                    "generated_at": generated_at,
+                    "model": "demo-fixture-rehearsal",
+                }
 
         # Build the user payload
         bundle_text = _build_bundle_summary(
@@ -293,6 +271,8 @@ class ReportingAgent:
         system = _inject_prompt_vars(_SYSTEM_PROMPT, incident_id)
 
         try:
+            if AsyncGroq is None:
+                raise RuntimeError("Groq SDK is not installed in the environment.")
             groq_client = AsyncGroq(api_key=None)
             chat = await groq_client.chat.completions.create(
                 model=_GROQ_MODEL,
@@ -300,9 +280,8 @@ class ReportingAgent:
                     {"role": "system", "content": system},
                     {"role": "user",   "content": bundle_text},
                 ],
-                temperature=0.3,    # slight creativity for readable prose
+                temperature=0.3,
                 max_tokens=1500,
-                # Markdown output — do NOT use json_object mode here
             )
             raw_md = chat.choices[0].message.content or ""
             summary_md = _strip_fences(raw_md)
@@ -320,15 +299,20 @@ class ReportingAgent:
                 incident_id,
                 exc,
             )
-            summary_md = _fallback_report(
-                incident_id=incident_id,
-                triage_json=triage_json,
-                intel_json=intel_json,
-                risk_score=risk_score,
-                risk_assessment=risk_assessment,
-                deception_path=deception_path,
-            )
-            model_used = "fallback"
+            fixture = get_demo_fixture(ioc)
+            if fixture and "report" in fixture and "summary_md" in fixture["report"]:
+                summary_md = fixture["report"]["summary_md"].replace("{INCIDENT_ID}", incident_id)
+                model_used = "demo-fixture-fallback"
+            else:
+                summary_md = _fallback_report(
+                    incident_id=incident_id,
+                    triage_json=triage_json,
+                    intel_json=intel_json,
+                    risk_score=risk_score,
+                    risk_assessment=risk_assessment,
+                    deception_path=deception_path,
+                )
+                model_used = "fallback"
 
         return {
             "incident_id":  incident_id,

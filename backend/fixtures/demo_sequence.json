@@ -1,0 +1,275 @@
+{
+  "incidents": {
+    "194.26.29.112": {
+      "ip": "194.26.29.112",
+      "attack_type": "SQL Injection & Unsecured Config Exfiltration",
+      "endpoint": "/api/admin/config",
+      "method": "POST",
+      "severity": "CRITICAL",
+      "confidence_score": 0.94,
+      "risk_score": 0.842,
+      "anomaly_score": 0.94,
+      "mitre_tactic": "Initial Access",
+      "mitre_technique": "T1190 – Exploit Public-Facing Application",
+      "reasoning": "High-entropy SQL injection probe and union extraction detected on admin configuration endpoint.",
+      "decoy_path": "/decoy/db-admin",
+      "tavily": {
+        "answer": "IP 194.26.29.112 is a known bulletproof host operated out of Eastern Europe, frequently identified in automated SQL injection exploit campaigns (CVE-2024-SQLi-Extraction) and credential exfiltration. Multiple active abuse reports classify it as an active botnet command scanner.",
+        "ioc_summary": "Active scanner and exploit node targeting public web applications and API admin interfaces."
+      },
+      "reputation": {
+        "malicious_score": 0.94,
+        "vt_score": "48/72 Engines Flagged",
+        "abuse_score": "96% Abuse Confidence",
+        "tags": ["malicious", "c2-server", "scanner", "sql-injection", "virustotal-flagged", "abuseipdb-reported"]
+      },
+      "chatter": [
+        {
+          "agent": "TRIAGE",
+          "reasoning": "Anomaly score 0.94 flagged on /api/admin/config. SQL Injection pattern matched. MITRE T1190 mapped (Exploit Public-Facing Application).",
+          "step": "triage_classification",
+          "tagColor": "#00f0ff"
+        },
+        {
+          "agent": "INTEL",
+          "reasoning": "Enriched via Tavily & Swytchcode (VirusTotal 48/72 engines flagged, AbuseIPDB 96% confidence). Known malicious exploitation origin.",
+          "step": "threat_intel_enrichment",
+          "tagColor": "#00f0ff"
+        },
+        {
+          "agent": "RISK",
+          "reasoning": "Blast radius computed: 0.84 on critical admin config ➔ Risk score 0.842. Autonomy cutoff exceeded (>= 0.40). Escalating for human authorization.",
+          "step": "risk_evaluation",
+          "tagColor": "#ffb703"
+        },
+        {
+          "agent": "DECEPTION",
+          "reasoning": "Attacker 194.26.29.112 trapped and redirected to decoy honeypot /decoy/db-admin. Graph topology committed.",
+          "step": "deception_routing",
+          "tagColor": "#00ff66"
+        },
+        {
+          "agent": "REPORTING",
+          "reasoning": "Forensic Markdown report compiled with MITRE ATT&CK mappings and recommended firewall isolation.",
+          "step": "report_generation",
+          "tagColor": "#a855f7"
+        }
+      ],
+      "report": {
+        "summary_md": "# 🛡️ CHIMERA Incident Report — INC-2026-0891\n\n## Executive Summary\nA **CRITICAL** severity SQL injection and configuration exfiltration attempt was detected originating from `194.26.29.112`. The threat has been intercepted by the CHIMERA multi-agent pipeline and routed to an active deception honeypot (`/decoy/db-admin`). Threat confidence is **94%** with a composite risk score of **0.8420**. ⚠️ **Human analyst authorization is required for perimeter firewall containment.**\n\n## Threat Classification\n| Field             | Value |\n|-------------------|-------|\n| Severity          | CRITICAL |\n| MITRE Tactic      | Initial Access |\n| MITRE Technique   | T1190 – Exploit Public-Facing Application |\n| Confidence Score  | 0.9400 |\n| Risk Score        | 0.8420 |\n| Risk Band         | CRITICAL_ESCALATE |\n\n## Threat Intelligence\nIOC `194.26.29.112` is recognized by VirusTotal (48/72 engines flagged) and AbuseIPDB (96% confidence) as a hostile scanning and automated exploitation node. Tavily live threat intelligence corroborates active campaigns leveraging UNION-based SQL injections and directory traversal payloads.\n\n## Timeline & Attack Chain\n- **00:00.12** — EdgeFilter XGBoost flagged anomalous high-entropy request on `/api/admin/config` (score: 0.94).\n- **00:00.35** — TriageAgent classified payload as MITRE T1190 (Exploit Public-Facing Application).\n- **00:00.68** — ThreatIntelAgent enriched IOC via Tavily QnA & Swytchcode reputation connectors.\n- **00:01.02** — RiskEngine computed composite risk of 0.8420, exceeding autonomy cutoff.\n- **00:01.24** — DeceptionAgent rerouted TCP connection to honeypot `/decoy/db-admin`.\n\n## Deception Layer\nAttacker traffic was transparently diverted to `/decoy/db-admin` providing synthetic PostgreSQL administrative responses to capture attacker tooling and payloads without exposing production infrastructure.\n\n## Recommended Actions\n- ⚠️ **Authorize immediate perimeter IP block for `194.26.29.112`.**\n- Verify database credential rotations for service accounts accessing `/api/admin/config`.\n- Review honeypot telemetry for harvested SQL payloads and signature extraction.\n\n## Graph Topology\nGraph link recorded: `ip:194.26.29.112` ➔ `waf` ➔ `decoy-db`.\n\n---\n*Generated by CHIMERA AutoSOC (Deterministic Rehearsal Engine)*"
+      }
+    },
+    "45.154.255.89": {
+      "ip": "45.154.255.89",
+      "attack_type": "Credential Stuffing / SSH Brute Force Campaign",
+      "endpoint": "/api/v1/auth/login",
+      "method": "POST",
+      "severity": "HIGH",
+      "confidence_score": 0.88,
+      "risk_score": 0.385,
+      "anomaly_score": 0.88,
+      "mitre_tactic": "Credential Access",
+      "mitre_technique": "T1110 – Brute Force Credentials",
+      "reasoning": "High-frequency dictionary attack and credential stuffing detected against public authentication gateway.",
+      "decoy_path": "/decoy/ssh-login",
+      "tavily": {
+        "answer": "IP 45.154.255.89 is associated with a distributed Mirai-variant botnet conducting high-volume SSH, FTP, and HTTP basic auth credential stuffing campaigns across North America and Europe.",
+        "ioc_summary": "Distributed credential stuffing botnet node with over 350 abuse reports in the last 24 hours."
+      },
+      "reputation": {
+        "malicious_score": 0.88,
+        "vt_score": "32/72 Engines Flagged",
+        "abuse_score": "85% Abuse Confidence",
+        "tags": ["botnet", "credential-stuffing", "scanner", "virustotal-flagged", "abuseipdb-reported"]
+      },
+      "chatter": [
+        {
+          "agent": "TRIAGE",
+          "reasoning": "High frequency auth failure burst detected on /api/v1/auth/login. MITRE T1110 mapped (Brute Force Credentials).",
+          "step": "triage_classification",
+          "tagColor": "#00f0ff"
+        },
+        {
+          "agent": "INTEL",
+          "reasoning": "Swytchcode & Tavily report 45.154.255.89 as an active botnet credential brute forcer (32/72 VT engines flagged).",
+          "step": "threat_intel_enrichment",
+          "tagColor": "#00f0ff"
+        },
+        {
+          "agent": "RISK",
+          "reasoning": "Risk score computed: 0.385. Evaluated below autonomy cutoff (< 0.40). Triggering autonomous containment playbook via n8n.",
+          "step": "risk_evaluation",
+          "tagColor": "#ffb703"
+        },
+        {
+          "agent": "CONTAINMENT",
+          "reasoning": "Automated perimeter firewall rule deployed via n8n webhook. IP 45.154.255.89 isolated autonomously.",
+          "step": "containment_executed",
+          "tagColor": "#00ff66"
+        },
+        {
+          "agent": "DECEPTION",
+          "reasoning": "Subsequent probes rerouted to /decoy/ssh-login high-interaction honeypot.",
+          "step": "deception_routing",
+          "tagColor": "#00ff66"
+        }
+      ],
+      "report": {
+        "summary_md": "# 🛡️ CHIMERA Incident Report — INC-2026-0890\n\n## Executive Summary\nA **HIGH** severity Credential Stuffing campaign was detected originating from `45.154.255.89` targeting `/api/v1/auth/login`. Because the calculated composite risk score (**0.3850**) was within the autonomous containment threshold (< 0.40), **CHIMERA automatically deployed a perimeter firewall isolation rule without requiring human escalation.**\n\n## Threat Classification\n| Field             | Value |\n|-------------------|-------|\n| Severity          | HIGH |\n| MITRE Tactic      | Credential Access |\n| MITRE Technique   | T1110 – Brute Force Credentials |\n| Confidence Score  | 0.8800 |\n| Risk Score        | 0.3850 |\n| Risk Band         | AUTO_CONTAINED |\n\n## Threat Intelligence\nIOC `45.154.255.89` is a known brute-force node reported by 32 security engines on VirusTotal and rated at 85% abuse probability on AbuseIPDB. Tavily threat intelligence confirms active participation in distributed credential dictionary harvesting.\n\n## Timeline & Attack Chain\n- **00:00.08** — Anomaly score 0.88 recorded during multi-threaded authentication attempts.\n- **00:00.22** — TriageAgent classified activity as MITRE T1110 (Brute Force Credentials).\n- **00:00.41** — Risk score evaluated at 0.3850 (Autonomous Containment Qualified).\n- **00:00.65** — n8n automated playbook executed firewall ban on `45.154.255.89`.\n\n## Recommended Actions\n- ✅ **Automated containment active:** IP blocked at edge perimeter.\n- Inspect authentication logs for any successfully compromised user accounts.\n- Enforce rate-limiting and MFA on external login portals.\n\n---\n*Generated by CHIMERA AutoSOC (Deterministic Rehearsal Engine)*"
+      }
+    },
+    "103.203.57.18": {
+      "ip": "103.203.57.18",
+      "attack_type": "Internal Reconnaissance & Port Probing",
+      "endpoint": "/decoy/health-internal",
+      "method": "GET",
+      "severity": "MEDIUM",
+      "confidence_score": 0.72,
+      "risk_score": 0.320,
+      "anomaly_score": 0.72,
+      "mitre_tactic": "Discovery",
+      "mitre_technique": "T1046 – Network Service Discovery",
+      "reasoning": "Automated network service scanning and directory enumeration probe against internal diagnostic endpoints.",
+      "decoy_path": "/decoy/health-internal",
+      "tavily": {
+        "answer": "IP 103.203.57.18 is linked to internet-wide reconnaissance scanners and port sweepers probing for unauthenticated Prometheus metrics, health status endpoints, and actuator consoles.",
+        "ioc_summary": "Reconnaissance scanner actively probing telemetry and management endpoints across cloud providers."
+      },
+      "reputation": {
+        "malicious_score": 0.72,
+        "vt_score": "18/72 Engines Flagged",
+        "abuse_score": "65% Abuse Confidence",
+        "tags": ["scanner", "reconnaissance", "network-discovery", "virustotal-flagged"]
+      },
+      "chatter": [
+        {
+          "agent": "TRIAGE",
+          "reasoning": "Port sweep and service probing pattern detected on /decoy/health-internal. MITRE T1046 mapped (Network Service Discovery).",
+          "step": "triage_classification",
+          "tagColor": "#00f0ff"
+        },
+        {
+          "agent": "INTEL",
+          "reasoning": "Tavily & Swytchcode classify 103.203.57.18 as routine reconnaissance probe (18/72 VT engines flagged).",
+          "step": "threat_intel_enrichment",
+          "tagColor": "#00f0ff"
+        },
+        {
+          "agent": "RISK",
+          "reasoning": "Composite risk score calculated: 0.320. Asset criticality low. Executing automated deception trap and edge throttling.",
+          "step": "risk_evaluation",
+          "tagColor": "#ffb703"
+        },
+        {
+          "agent": "DECEPTION",
+          "reasoning": "Attacker sinkholed into /decoy/health-internal synthetic responses to record scanner fingerprint.",
+          "step": "deception_routing",
+          "tagColor": "#00ff66"
+        }
+      ],
+      "report": {
+        "summary_md": "# 🛡️ CHIMERA Incident Report — INC-2026-0889\n\n## Executive Summary\nA **MEDIUM** severity Network Service Discovery probe was detected from `103.203.57.18`. The scanner triggered a CHIMERA internal telemetry decoy (`/decoy/health-internal`). Composite risk was evaluated at **0.3200**, resulting in automated sinkholing.\n\n## Threat Classification\n| Field             | Value |\n|-------------------|-------|\n| Severity          | MEDIUM |\n| MITRE Tactic      | Discovery |\n| MITRE Technique   | T1046 – Network Service Discovery |\n| Confidence Score  | 0.7200 |\n| Risk Score        | 0.3200 |\n| Risk Band         | AUTO_CONTAINED |\n\n## Deception Layer\nAttacker was trapped in `/decoy/health-internal`, returning obfuscated node status and simulated microservice health checks.\n\n## Recommended Actions\n- Verify internal service diagnostic endpoints remain unexposed to public perimeter.\n- Maintain low-priority rate limiting against scanner subnet.\n\n---\n*Generated by CHIMERA AutoSOC (Deterministic Rehearsal Engine)*"
+      }
+    },
+    "10.0.0.5": {
+      "ip": "10.0.0.5",
+      "attack_type": "Unauthorized Core Subnet Target Isolation (Swytchcode Guardrail Intercept)",
+      "endpoint": "/core/db-primary",
+      "method": "POST",
+      "severity": "CRITICAL",
+      "confidence_score": 0.99,
+      "risk_score": 0.950,
+      "anomaly_score": 0.98,
+      "mitre_tactic": "Impact",
+      "mitre_technique": "T1565 – Data & Service Destruction",
+      "reasoning": "CRITICAL: Agent containment attempt intercepted by Swytchcode Pre-Execution Guardrail on protected core database infrastructure.",
+      "decoy_path": "/core/db-primary",
+      "tavily": {
+        "answer": "IP 10.0.0.5 is an internal RFC-1918 production core database cluster. Any containment action, host isolation, or traffic blackholing against this IP represents catastrophic service disruption.",
+        "ioc_summary": "Internal Core Database Cluster — Protected under Swytchcode Zero-Trust Security Policy."
+      },
+      "reputation": {
+        "malicious_score": 0.00,
+        "vt_score": "Internal Protected Asset",
+        "abuse_score": "0% Abuse (Core Infrastructure)",
+        "tags": ["protected-asset", "core-database", "zero-trust-guarded", "mission-critical"]
+      },
+      "chatter": [
+        {
+          "agent": "TRIAGE",
+          "reasoning": "Rogue AI containment request targeting protected core infrastructure (10.0.0.5). MITRE T1565 evaluated.",
+          "step": "triage_classification",
+          "tagColor": "#ff003c"
+        },
+        {
+          "agent": "GUARDRAIL",
+          "reasoning": "[SWYTCHCODE GUARDRAIL] INTERCEPTED ROGUE AI ACTION: Containment on protected subnet (10.0.0.5) blocked by policy rule [policy_protect_core_infrastructure].",
+          "step": "policy_intercepted",
+          "tagColor": "#ff003c"
+        },
+        {
+          "agent": "RISK",
+          "reasoning": "High criticality asset isolation prevented. System state preserved. Incident permanently blocked from destructive containment.",
+          "step": "risk_evaluation",
+          "tagColor": "#ffb703"
+        }
+      ],
+      "report": {
+        "summary_md": "# 🚨 SWYTCHCODE ZERO-TRUST GUARDRAIL INTERCEPT REPORT — INC-2026-0892\n\n## Executive Summary\n**CRITICAL POLICY VIOLATION INTERCEPTED:** A rogue or misconfigured agent action attempted to initiate host isolation and traffic blackholing on internal core database `10.0.0.5`. **Swytchcode Zero-Trust Pre-Execution Guardrail policy `[policy_protect_core_infrastructure]` successfully intercepted and halted execution before any firewall or containment command was dispatched.**\n\n## Threat Classification\n| Field             | Value |\n|-------------------|-------|\n| Severity          | CRITICAL |\n| Intercept Policy  | policy_protect_core_infrastructure |\n| Target Asset      | 10.0.0.5 (Primary Core PostgreSQL Database) |\n| Status            | INTERCEPTED_BY_GUARDRAIL |\n| Execution Result  | PERMANENTLY_BLOCKED |\n\n## Policy Evaluation Details\n- **Target IP:** `10.0.0.5` (Matches Protected Core Subnet `10.0.0.0/24`)\n- **Attempted Action:** `block_ip` / Subnet Host Isolation\n- **Guardrail Engine:** Swytchcode Deterministic Zero-Trust Policy Kernel\n\n## Recommended Actions\n- ✅ **Zero-Trust Guardrail verified:** Core infrastructure protected from unauthorized AI execution.\n- Audit agent prompt safety and privilege boundaries.\n\n---\n*Generated by CHIMERA AutoSOC (Swytchcode Zero-Trust Kernel)*"
+      }
+    },
+    "185.220.101.42": {
+      "ip": "185.220.101.42",
+      "attack_type": "SQL Injection on Public Endpoint (/api/admin/config)",
+      "endpoint": "/api/admin/config",
+      "method": "GET",
+      "severity": "CRITICAL",
+      "confidence_score": 0.94,
+      "risk_score": 0.842,
+      "anomaly_score": 0.94,
+      "mitre_tactic": "Initial Access",
+      "mitre_technique": "T1190 – Exploit Public-Facing Application",
+      "reasoning": "Active Tor Exit node conducting automated vulnerability exploitation on API admin endpoints.",
+      "decoy_path": "/decoy/db-admin",
+      "tavily": {
+        "answer": "Active Tor Exit node observed conducting automated vulnerability scanning against public authentication gateways and API admin endpoints.",
+        "ioc_summary": "Tor exit node with extensive history of automated web vulnerability scanning."
+      },
+      "reputation": {
+        "malicious_score": 0.94,
+        "vt_score": "48/72 Engines Flagged",
+        "abuse_score": "98% Abuse Confidence",
+        "tags": ["tor-exit-node", "scanner", "c2-server", "virustotal-flagged"]
+      },
+      "chatter": [
+        {
+          "agent": "TRIAGE",
+          "reasoning": "High-entropy payload detected on /api/admin/config. MITRE T1190 mapped (Exploit Public-Facing Application).",
+          "step": "triage_classification",
+          "tagColor": "#00f0ff"
+        },
+        {
+          "agent": "INTEL",
+          "reasoning": "Querying Tavily for live threat intelligence & VirusTotal via Swytchcode connector. Known malicious IP.",
+          "step": "threat_intel_enrichment",
+          "tagColor": "#00f0ff"
+        },
+        {
+          "agent": "RISK",
+          "reasoning": "Blast radius calculated: 0.84 ➔ Risk score 0.842. Escalating for Human Authorization.",
+          "step": "risk_evaluation",
+          "tagColor": "#ffb703"
+        },
+        {
+          "agent": "DECEPTION",
+          "reasoning": "Attacker 185.220.101.42 rerouted to honeypot /decoy/db-admin. Topology graph edge committed.",
+          "step": "deception_routing",
+          "tagColor": "#00ff66"
+        }
+      ],
+      "report": {
+        "summary_md": "# 🛡️ CHIMERA Incident Report — INC-2026-0891\n\n## Executive Summary\nA **CRITICAL** severity SQL injection exploit was detected from Tor exit node `185.220.101.42` targeting `/api/admin/config`. Attacker was trapped in `/decoy/db-admin`.\n\n## Threat Classification\n| Field             | Value |\n|-------------------|-------|\n| Severity          | CRITICAL |\n| MITRE Tactic      | Initial Access |\n| MITRE Technique   | T1190 – Exploit Public-Facing Application |\n| Confidence Score  | 0.9400 |\n| Risk Score        | 0.8420 |\n\n---\n*Generated by CHIMERA AutoSOC*"
+      }
+    }
+  }
+}

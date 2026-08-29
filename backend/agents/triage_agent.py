@@ -24,11 +24,13 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any
-
-from groq import AsyncGroq
+try:
+    from groq import AsyncGroq
+except ImportError:
+    AsyncGroq = None
 
 from backend.config import settings
+from backend.fixtures.loader import is_demo_mode, get_demo_fixture, simulate_agent_latency
 
 logger = logging.getLogger(__name__)
 
@@ -118,16 +120,10 @@ def _severity_from_score(score: float) -> str:
 async def _call_llm(system: str, user: str) -> str:
     """
     Call the Groq LLM asynchronously and return the assistant message content.
-
-    Swap the body of this function to use a different provider
-    (e.g. Lyzr agent API, Gemini, OpenAI) without touching callers.
     """
-    api_key = settings.LYZR_API_KEY or settings.GEMINI_API_KEY or None
-    groq_client = AsyncGroq(
-        # groq picks up GROQ_API_KEY from env automatically; passing None
-        # here means the SDK reads it from the environment variable.
-        api_key=None,
-    )
+    if AsyncGroq is None:
+        raise RuntimeError("Groq SDK is not installed in the environment.")
+    groq_client = AsyncGroq(api_key=None)
     chat = await groq_client.chat.completions.create(
         model=_GROQ_MODEL,
         messages=[
@@ -149,13 +145,7 @@ class TriageAgent:
     """
     Classifies a security alert using an LLM backed by the XGBoost anomaly
     score from EdgeFilter.
-
-    Usage::
-
-        agent = TriageAgent()
-        result = await agent.classify(raw_log={"path": "/etc/passwd", ...},
-                                      anomaly_score=0.92)
-        # result → {"severity": "CRITICAL", "mitre_tactic": "...", ...}
+    In DEMO_MODE, returns deterministic high-fidelity classification with simulated latency.
     """
 
     async def classify(
@@ -165,27 +155,31 @@ class TriageAgent:
     ) -> dict[str, Any]:
         """
         Run LLM-based triage classification.
-
-        Parameters
-        ----------
-        raw_log:
-            The raw event / log dictionary as produced by the ingest router.
-        anomaly_score:
-            Float in [0.0, 1.0] from ``EdgeFilter.score_log()``.
-
-        Returns
-        -------
-        dict with keys:
-            - ``severity``        – ``"LOW"`` | ``"MEDIUM"`` | ``"HIGH"`` | ``"CRITICAL"``
-            - ``mitre_tactic``    – MITRE ATT&CK tactic string
-            - ``mitre_technique`` – MITRE ATT&CK technique ID + name
-            - ``reasoning``       – one-sentence rationale
         """
         logger.info(
             "TriageAgent.classify | anomaly_score=%.4f | log_keys=%s",
             anomaly_score,
             list(raw_log.keys()),
         )
+
+        source_ip = raw_log.get("source_ip") or raw_log.get("source") or ""
+        endpoint = raw_log.get("endpoint") or raw_log.get("path") or ""
+
+        # ── 1. DEMO_MODE Fast Deterministic Return ─────────────────────────
+        if is_demo_mode():
+            await simulate_agent_latency(200, 380)
+            fixture = get_demo_fixture(source_ip) or get_demo_fixture(endpoint)
+            if fixture:
+                sev = fixture.get("severity") or _severity_from_score(anomaly_score)
+                tactic = fixture.get("mitre_tactic", "Initial Access")
+                technique = fixture.get("mitre_technique", "T1190 – Exploit Public-Facing Application")
+                reasoning = fixture.get("reasoning", f"Classified as {sev} based on anomaly score {anomaly_score:.2f}")
+                return {
+                    "severity": sev,
+                    "mitre_tactic": tactic,
+                    "mitre_technique": technique,
+                    "reasoning": reasoning,
+                }
 
         user_msg = _build_user_message(raw_log, anomaly_score)
 
@@ -207,7 +201,14 @@ class TriageAgent:
 
         except Exception as exc:
             logger.error("TriageAgent LLM call failed: %s — using fallback", exc)
-            # Graceful fallback: derive severity from score, mark MITRE unknown
+            fixture = get_demo_fixture(source_ip) or get_demo_fixture(endpoint)
+            if fixture:
+                return {
+                    "severity": fixture.get("severity", _severity_from_score(anomaly_score)),
+                    "mitre_tactic": fixture.get("mitre_tactic", "Initial Access"),
+                    "mitre_technique": fixture.get("mitre_technique", "T1190 – Exploit Public-Facing Application"),
+                    "reasoning": fixture.get("reasoning", f"Fallback classification for {source_ip}."),
+                }
             return {
                 "severity": _severity_from_score(anomaly_score),
                 "mitre_tactic": "Unknown",

@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+import { useSOCStream } from "@/hooks/useSOCStream";
+
 interface NavItem {
   name: string;
   href: string;
@@ -53,9 +55,54 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { demoMode: streamDemoMode } = useSOCStream("ws://localhost:8000/ws/console");
+  const [demoMode, setDemoMode] = useState<boolean>(true);
+  const [isTogglingDemo, setIsTogglingDemo] = useState<boolean>(false);
   const [utcTime, setUtcTime] = useState<string>("");
   const [istTime, setIstTime] = useState<string>("");
   const [activeDefenders, setActiveDefenders] = useState<number>(4);
+
+  // Synchronize with WebSocket stream demoMode
+  useEffect(() => {
+    if (typeof streamDemoMode === "boolean") {
+      setDemoMode(streamDemoMode);
+    }
+  }, [streamDemoMode]);
+
+  // Initial fetch from backend API
+  useEffect(() => {
+    async function checkDemoMode() {
+      try {
+        const res = await fetch("http://localhost:8000/api/system/demo-mode");
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.demo_mode === "boolean") {
+            setDemoMode(data.demo_mode);
+          }
+        }
+      } catch (err) {
+        // keep fallback
+      }
+    }
+    checkDemoMode();
+  }, []);
+
+  const handleToggleDemoMode = async () => {
+    const nextState = !demoMode;
+    setDemoMode(nextState);
+    setIsTogglingDemo(true);
+    try {
+      await fetch("http://localhost:8000/api/system/demo-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: nextState }),
+      });
+    } catch (err) {
+      console.warn("[DEMO_MODE] Toggle error:", err);
+    } finally {
+      setIsTogglingDemo(false);
+    }
+  };
 
   // Live HUD clocks
   useEffect(() => {
@@ -226,8 +273,42 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          {/* Right: Live Telemetry & Clocks */}
+          {/* Center / Right: Interactive Status Pill & Live Telemetry */}
           <div className="flex items-center gap-4 font-mono text-xs">
+            {/* Interactive DEMO_MODE / LIVE Pill */}
+            <button
+              onClick={handleToggleDemoMode}
+              disabled={isTogglingDemo}
+              title="Click to toggle between Zero-Latency Offline Demo Fixtures and Live External Telemetry"
+              className={cn(
+                "relative flex items-center gap-2.5 px-3.5 py-1.5 rounded-lg border font-mono text-xs font-bold uppercase transition-all duration-300 cursor-pointer select-none",
+                demoMode
+                  ? "bg-[#00f0ff]/10 text-[#00f0ff] border-[#00f0ff]/40 shadow-[0_0_15px_rgba(0,240,255,0.25)] hover:bg-[#00f0ff]/20 hover:border-[#00f0ff]/70"
+                  : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/40 shadow-[0_0_15px_rgba(0,255,102,0.25)] hover:bg-[#00ff66]/20 hover:border-[#00ff66]/70"
+              )}
+            >
+              {demoMode ? (
+                <>
+                  <span className="text-[#ffb703] text-sm animate-pulse">◈</span>
+                  <span className="tracking-wider">DEMO FIXTURE MODE</span>
+                  <span className="px-1.5 py-0.2 text-[9px] rounded bg-[#ffb703]/20 text-[#ffb703] border border-[#ffb703]/40">
+                    OFFLINE-SAFE
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="relative flex w-2 h-2">
+                    <span className="absolute inline-flex w-full h-full rounded-full opacity-75 animate-ping bg-[#00ff66]" />
+                    <span className="relative inline-flex w-2 h-2 rounded-full bg-[#00ff66]" />
+                  </span>
+                  <span className="tracking-wider">LIVE TELEMETRY</span>
+                  <span className="px-1.5 py-0.2 text-[9px] rounded bg-[#00ff66]/20 text-[#00ff66] border border-[#00ff66]/40">
+                    LIVE
+                  </span>
+                </>
+              )}
+            </button>
+
             <div className="hidden md:flex items-center gap-3 px-3 py-1.5 rounded-lg border border-[#00f0ff]/20 bg-[#00f0ff]/5 text-[#00f0ff]">
               <Clock className="w-3.5 h-3.5" />
               <span>{utcTime || "00:00:00 UTC"}</span>

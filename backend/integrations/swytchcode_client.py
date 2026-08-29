@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 from backend.config import settings
+from backend.fixtures.loader import is_demo_mode, get_demo_fixture, simulate_agent_latency
 
 logger = logging.getLogger(__name__)
 
@@ -117,24 +118,37 @@ class SwytchcodeConnector:
     async def get_reputation(self, ioc: str) -> dict[str, Any]:
         """
         Return a reputation report for the given IOC.
-
-        Parameters
-        ----------
-        ioc:
-            IP address, CVE identifier, or domain string.
-
-        Returns
-        -------
-        dict with keys:
-            - ``ioc``             – the queried indicator
-            - ``ioc_type``        – ``"ip"``, ``"cve"``, or ``"domain"``
-            - ``malicious_score`` – float in [0.0, 1.0]
-            - ``tags``            – list of descriptive tag strings
-            - ``sources``         – raw per-source data
+        In DEMO_MODE, returns deterministic fixture data with realistic micro-latency.
         """
         logger.info("SwytchcodeConnector.get_reputation | ioc=%s", ioc)
 
         ioc_kind = _ioc_type(ioc)
+
+        # ── 1. DEMO_MODE Fast Offline Return with simulated latency ─────────
+        if is_demo_mode():
+            await simulate_agent_latency(200, 350)
+            fixture = get_demo_fixture(ioc)
+            if fixture and "reputation" in fixture:
+                rep = fixture["reputation"]
+                mal_score = float(rep.get("malicious_score", 0.85))
+                tags = rep.get("tags", [ioc_kind, "malicious", "virustotal-flagged"])
+                vt_score_str = rep.get("vt_score", "48/72 Engines Flagged")
+                abuse_score_str = rep.get("abuse_score", "90% Abuse Confidence")
+
+                # Build source payloads
+                vt_pos = int(mal_score * 72)
+                abuse_pct = int(mal_score * 100)
+
+                return {
+                    "ioc": ioc,
+                    "ioc_type": ioc_kind,
+                    "malicious_score": mal_score,
+                    "tags": tags,
+                    "sources": {
+                        "virustotal": {"engine": "virustotal", "positives": vt_pos, "total": 72, "summary": vt_score_str},
+                        "abuseipdb": {"engine": "abuseipdb", "abuse_confidence_score": abuse_pct, "total_reports": int(mal_score * 400), "summary": abuse_score_str},
+                    },
+                }
 
         # Run both sub-fetchers concurrently
         vt_data, abuse_data = await asyncio.gather(

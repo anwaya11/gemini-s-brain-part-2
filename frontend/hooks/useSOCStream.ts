@@ -78,6 +78,7 @@ export interface SOCStreamState {
   intelList: IntelRecord[];
   incidents: IncidentItem[];
   config: SOCConfig;
+  demoMode: boolean;
   isConnected: boolean;
 }
 
@@ -309,6 +310,7 @@ let globalState: SOCStreamState = {
     autonomy_cutoff: 0.40,
     containment_webhook: "http://localhost:5678/webhook/chimera",
   },
+  demoMode: true,
   isConnected: false,
 };
 
@@ -522,7 +524,17 @@ function handleIncomingMessage(rawText: string) {
       notifyListeners();
     }
 
-    // ── 8. System Snapshot on Connection Handshake ────────────────────
+    // ── 8. Demo Mode Real-time Broadcast ──────────────────────────────
+    else if (messageType === "demo_mode") {
+      const isDemo = payload.enabled ?? payload.demo_mode ?? true;
+      globalState = {
+        ...globalState,
+        demoMode: Boolean(isDemo),
+      };
+      notifyListeners();
+    }
+
+    // ── 9. System Snapshot on Connection Handshake ────────────────────
     else if (messageType === "system" && payload) {
       if (payload.config) {
         globalState = { ...globalState, config: { ...globalState.config, ...payload.config } };
@@ -532,6 +544,9 @@ function handleIncomingMessage(rawText: string) {
       }
       if (payload.graph) {
         globalState = { ...globalState, graphData: payload.graph };
+      }
+      if (payload.demo_mode !== undefined) {
+        globalState = { ...globalState, demoMode: Boolean(payload.demo_mode) };
       }
       notifyListeners();
     }

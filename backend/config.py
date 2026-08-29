@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://chimera_admin:chimera_secret_pass@localhost:5432/chimera_soc"
 
     # External Services & API Keys
+    DEMO_MODE: Optional[bool] = None
     LYZR_API_KEY: Optional[str] = None
     TAVILY_API_KEY: Optional[str] = None
     SWYTCHCODE_API_KEY: Optional[str] = None
