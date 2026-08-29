@@ -3,6 +3,7 @@
     "194.26.29.112": {
       "ip": "194.26.29.112",
       "attack_type": "SQL Injection & Unsecured Config Exfiltration",
+      "cert_in_category": "Unauthorized access to IT systems or data",
       "endpoint": "/api/admin/config",
       "method": "POST",
       "severity": "CRITICAL",
@@ -62,6 +63,7 @@
     "45.154.255.89": {
       "ip": "45.154.255.89",
       "attack_type": "Credential Stuffing / SSH Brute Force Campaign",
+      "cert_in_category": "Identity theft, spoofing, and phishing attacks",
       "endpoint": "/api/v1/auth/login",
       "method": "POST",
       "severity": "HIGH",
@@ -121,6 +123,7 @@
     "103.203.57.18": {
       "ip": "103.203.57.18",
       "attack_type": "Internal Reconnaissance & Port Probing",
+      "cert_in_category": "Targeted scanning/probing of critical networks/systems",
       "endpoint": "/decoy/health-internal",
       "method": "GET",
       "severity": "MEDIUM",
@@ -174,6 +177,7 @@
     "10.0.0.5": {
       "ip": "10.0.0.5",
       "attack_type": "Unauthorized Core Subnet Target Isolation (Swytchcode Guardrail Intercept)",
+      "cert_in_category": "Compromise of critical systems/information",
       "endpoint": "/core/db-primary",
       "method": "POST",
       "severity": "CRITICAL",
@@ -221,6 +225,7 @@
     "185.220.101.42": {
       "ip": "185.220.101.42",
       "attack_type": "SQL Injection on Public Endpoint (/api/admin/config)",
+      "cert_in_category": "Unauthorized access to IT systems or data",
       "endpoint": "/api/admin/config",
       "method": "GET",
       "severity": "CRITICAL",

@@ -21,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useSOCStream, IncidentItem, PlaybookExecution } from "@/hooks/useSOCStream";
 import { PlaybookExecutionPanel } from "@/components/soc/PlaybookExecutionPanel";
+import { CertInClock } from "@/components/soc/CertInClock";
 
 export default function IncidentsPage() {
   const { incidents: streamIncidents, activePlaybook, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
@@ -311,6 +312,13 @@ export default function IncidentsPage() {
                     {inc.title}
                   </h3>
 
+                  {inc.cert_in_category && (
+                    <div className="mt-2 flex items-center gap-1.5 text-[10px] font-mono text-[#00f0ff]/80 truncate">
+                      <span className="text-white/40">CERT-In:</span>
+                      <span className="truncate font-semibold">{inc.cert_in_category}</span>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/5 font-mono text-[11px] text-white/50">
                     <div>
                       <span>TARGET IP: </span>
@@ -357,6 +365,9 @@ export default function IncidentsPage() {
                   Observed MITRE Technique: <span className="text-[#00f0ff]">{selectedIncident.mitre_technique}</span>
                 </p>
               </div>
+
+              {/* CERT-In 6-Hour Statutory Compliance Clock */}
+              <CertInClock incident={selectedIncident} />
 
               {/* Risk Dial & Metric Cards */}
               <div className="grid grid-cols-3 gap-3 font-mono">

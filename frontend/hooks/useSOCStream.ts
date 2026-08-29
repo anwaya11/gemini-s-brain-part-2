@@ -60,6 +60,7 @@ export interface IncidentItem {
   confidence: number;
   status: "PENDING_APPROVAL" | "CONTAINED" | "REJECTED" | "INTERCEPTED_BY_GUARDRAIL" | string;
   mitre_technique: string;
+  cert_in_category?: string;
   decoy_path: string;
   created_at: string;
 }
@@ -117,7 +118,7 @@ const INITIAL_GRAPH_DATA: GraphData = {
 
 const INITIAL_INTEL: IntelRecord[] = [
   {
-    id: "intel-base-1",
+    id: "ioc-1",
     ioc: "185.220.101.42",
     type: "IPv4",
     confidence: 0.94,
@@ -125,13 +126,13 @@ const INITIAL_INTEL: IntelRecord[] = [
     vt_score: "48/72 Engines Flagged",
     abuse_score: "98% Abuse Confidence",
     summary:
-      "Active Tor Exit node observed conducting automated vulnerability scanning against public authentication gateways and API admin endpoints.",
-    source: "Tavily Web Intel + Swytchcode VirusTotal",
-    last_seen: "Just now",
-    isLive: false,
+      "Active Tor exit node observed conducting automated vulnerability scanning against public authentication gateways and API admin endpoints.",
+    source: "Swytchcode VirusTotal + AbuseIPDB Feed",
+    last_seen: "12 mins ago",
+    isLive: true,
   },
   {
-    id: "intel-base-2",
+    id: "ioc-2",
     ioc: "CVE-2024-3400",
     type: "CVE",
     confidence: 0.98,
@@ -145,7 +146,7 @@ const INITIAL_INTEL: IntelRecord[] = [
     isLive: false,
   },
   {
-    id: "intel-base-3",
+    id: "ioc-3",
     ioc: "45.154.255.89",
     type: "IPv4",
     confidence: 0.88,
@@ -162,10 +163,24 @@ const INITIAL_INTEL: IntelRecord[] = [
 
 const INITIAL_INCIDENTS: IncidentItem[] = [
   {
+    id: "INC-2026-0892",
+    title: "Unauthorized Core Subnet Target Isolation (10.0.0.5)",
+    source_ip: "10.0.0.5",
+    severity: "CRITICAL",
+    cert_in_category: "Compromise of critical systems/information",
+    risk_score: 0.950,
+    confidence: 0.99,
+    status: "PENDING_APPROVAL",
+    mitre_technique: "T1565 – Data & Service Destruction",
+    decoy_path: "/core/db-primary",
+    created_at: "2026-08-27 02:22:15 IST",
+  },
+  {
     id: "INC-2026-0891",
     title: "SQL Injection on Public Endpoint (/api/admin/config)",
     source_ip: "185.220.101.42",
     severity: "CRITICAL",
+    cert_in_category: "Unauthorized access to IT systems or data",
     risk_score: 0.842,
     confidence: 0.94,
     status: "PENDING_APPROVAL",
@@ -178,6 +193,7 @@ const INITIAL_INCIDENTS: IncidentItem[] = [
     title: "Credential Stuffing / SSH Brute Force Campaign",
     source_ip: "45.154.255.89",
     severity: "HIGH",
+    cert_in_category: "Identity theft, spoofing, and phishing attacks",
     risk_score: 0.385,
     confidence: 0.88,
     status: "CONTAINED",
@@ -190,6 +206,7 @@ const INITIAL_INCIDENTS: IncidentItem[] = [
     title: "Internal Reconnaissance & Port Probing",
     source_ip: "103.203.57.18",
     severity: "MEDIUM",
+    cert_in_category: "Targeted scanning/probing of critical networks/systems",
     risk_score: 0.320,
     confidence: 0.72,
     status: "CONTAINED",
@@ -202,6 +219,7 @@ const INITIAL_INCIDENTS: IncidentItem[] = [
     title: "Unsecured Configuration Exfiltration Attempt",
     source_ip: "194.26.29.112",
     severity: "HIGH",
+    cert_in_category: "Unauthorized access to IT systems or data",
     risk_score: 0.710,
     confidence: 0.86,
     status: "PENDING_APPROVAL",

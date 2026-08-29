@@ -44,6 +44,18 @@ SOC_CONFIG: Dict[str, Any] = {
 }
 
 
+def map_cert_in_category(title: str = "", source_ip: str = "", mitre: str = "", endpoint: str = "") -> str:
+    """Map an incident signature to an official CERT-In (Section 70B IT Act) category."""
+    combined = f"{title} {source_ip} {mitre} {endpoint}".lower()
+    if "10.0.0." in combined or "core" in combined or "critical" in combined:
+        return "Compromise of critical systems/information"
+    if "ssh" in combined or "brute force" in combined or "credential" in combined or "phishing" in combined or "spoof" in combined or "t1110" in combined:
+        return "Identity theft, spoofing, and phishing attacks"
+    if "probe" in combined or "recon" in combined or "scan" in combined or "discovery" in combined or "t1046" in combined:
+        return "Targeted scanning/probing of critical networks/systems"
+    return "Unauthorized access to IT systems or data"
+
+
 # ── Dynamic In-Memory Incident Store ──────────────────────────────────────
 INCIDENTS: List[Dict[str, Any]] = [
     {
@@ -51,6 +63,7 @@ INCIDENTS: List[Dict[str, Any]] = [
         "title": "Unauthorized Core Subnet Target Isolation (10.0.0.5)",
         "source_ip": "10.0.0.5",
         "severity": "CRITICAL",
+        "cert_in_category": "Compromise of critical systems/information",
         "risk_score": 0.950,
         "confidence": 0.99,
         "status": "PENDING_APPROVAL",
@@ -63,6 +76,7 @@ INCIDENTS: List[Dict[str, Any]] = [
         "title": "SQL Injection on Public Endpoint (/api/admin/config)",
         "source_ip": "185.220.101.42",
         "severity": "CRITICAL",
+        "cert_in_category": "Unauthorized access to IT systems or data",
         "risk_score": 0.842,
         "confidence": 0.94,
         "status": "PENDING_APPROVAL",
@@ -75,6 +89,7 @@ INCIDENTS: List[Dict[str, Any]] = [
         "title": "Credential Stuffing / SSH Brute Force Campaign",
         "source_ip": "45.154.255.89",
         "severity": "HIGH",
+        "cert_in_category": "Identity theft, spoofing, and phishing attacks",
         "risk_score": 0.385,
         "confidence": 0.88,
         "status": "CONTAINED",
@@ -87,6 +102,7 @@ INCIDENTS: List[Dict[str, Any]] = [
         "title": "Internal Reconnaissance & Port Probing",
         "source_ip": "103.203.57.18",
         "severity": "MEDIUM",
+        "cert_in_category": "Targeted scanning/probing of critical networks/systems",
         "risk_score": 0.320,
         "confidence": 0.72,
         "status": "CONTAINED",
@@ -99,6 +115,7 @@ INCIDENTS: List[Dict[str, Any]] = [
         "title": "Unsecured Configuration Exfiltration Attempt",
         "source_ip": "194.26.29.112",
         "severity": "HIGH",
+        "cert_in_category": "Unauthorized access to IT systems or data",
         "risk_score": 0.710,
         "confidence": 0.86,
         "status": "PENDING_APPROVAL",
@@ -363,11 +380,16 @@ async def ingest_log(payload: RawLogPayload):
                 (fixture.get("mitre_technique") if fixture else None)
                 or ("T1190 – Exploit Public-Facing Application" if not is_decoy else "T1046 – Network Service Discovery")
             )
+            cert_category = (
+                (fixture.get("cert_in_category") if fixture else None)
+                or map_cert_in_category(attack_title, source_ip, mitre_tech, endpoint)
+            )
             created_incident = {
                 "id": f"INC-2026-{uuid.uuid4().hex[:4].upper()}",
                 "title": attack_title,
                 "source_ip": source_ip,
                 "severity": severity,
+                "cert_in_category": cert_category,
                 "risk_score": round(xgb_score, 3),
                 "confidence": round(min(xgb_score + 0.05, 0.98), 2),
                 "status": "PENDING_APPROVAL",
