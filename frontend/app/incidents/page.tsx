@@ -22,6 +22,9 @@ import { cn } from "@/lib/utils";
 import { useSOCStream, IncidentItem, PlaybookExecution } from "@/hooks/useSOCStream";
 import { PlaybookExecutionPanel } from "@/components/soc/PlaybookExecutionPanel";
 import { CertInClock } from "@/components/soc/CertInClock";
+import { AskTheSoc } from "@/components/soc/AskTheSoc";
+import { DecisionTimeline } from "@/components/soc/DecisionTimeline";
+import { ReportExportButton } from "@/components/soc/ReportExportButton";
 
 export default function IncidentsPage() {
   const { incidents: streamIncidents, activePlaybook, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
@@ -338,17 +341,21 @@ export default function IncidentsPage() {
         {/* Selected Incident Detail & Authorization Action Panel */}
         {selectedIncident && (
           <div className="lg:col-span-7 flex flex-col glass-card hud-corner-border rounded-xl overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#00f0ff]/15 bg-[#030303]/60 flex justify-between items-center">
+            <div className="px-5 py-3.5 border-b border-[#00f0ff]/15 bg-[#030303]/60 flex flex-wrap gap-2 justify-between items-center">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-[#00f0ff]" />
                 <span className="text-xs font-bold font-mono tracking-wider text-white uppercase">
                   Incident Dossier: {selectedIncident.id}
                 </span>
               </div>
-              <span className="text-xs font-mono text-white/40">
-                {selectedIncident.created_at}
-              </span>
+              <div className="flex items-center gap-3">
+                <ReportExportButton incident={selectedIncident} variant="compact" />
+                <span className="text-xs font-mono text-white/40">
+                  {selectedIncident.created_at}
+                </span>
+              </div>
             </div>
+
 
             <div className="flex-1 p-6 space-y-6 overflow-y-auto">
               {/* Header Title & Severity */}
@@ -493,8 +500,18 @@ export default function IncidentsPage() {
                   </div>
                 </div>
               )}
+
+              {/* Decision-Provenance Chronological Timeline */}
+              <DecisionTimeline incident={selectedIncident} />
+
+              {/* Ask the SOC Explainability Q&A Interface */}
+              <AskTheSoc
+                incidentId={selectedIncident.id}
+                incident={selectedIncident}
+              />
             </div>
           </div>
+
         )}
       </div>
     </div>

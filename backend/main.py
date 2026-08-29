@@ -296,6 +296,10 @@ class IncidentActionPayload(BaseModel):
     reason: Optional[str] = Field(default="Operator manual disposition")
 
 
+class IncidentExplainRequest(BaseModel):
+    query: str = Field(..., description="Natural language question about the incident")
+
+
 # ── Ingest Pipeline: POST /api/ingest ─────────────────────────────────────
 @app.post("/api/ingest")
 async def ingest_log(payload: RawLogPayload):
@@ -848,6 +852,21 @@ async def reject_incident(payload: IncidentActionPayload):
         "message": f"Incident {payload.incident_id} marked as rejected / false positive",
         "incidents": INCIDENTS,
     }
+
+
+@app.post("/api/incidents/{incident_id}/explain", tags=["Incidents"])
+async def explain_incident_endpoint(incident_id: str, payload: IncidentExplainRequest):
+    """
+    'Ask the SOC' Explainability Endpoint.
+    Answers natural language queries about a specific incident, strictly grounded
+    in the stored incident context, threat intelligence, and graph topology.
+    """
+    from backend.agents.reporting_agent import explain_incident
+
+    target_inc = next((inc for inc in INCIDENTS if inc["id"] == incident_id), None)
+    result = await explain_incident(incident_id=incident_id, query=payload.query, incident_data=target_inc)
+    return result
+
 
 
 # ── System Configuration Endpoints ────────────────────────────────────────

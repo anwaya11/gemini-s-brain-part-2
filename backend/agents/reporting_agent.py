@@ -28,6 +28,7 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 try:
     from groq import AsyncGroq
 except ImportError:
@@ -320,3 +321,217 @@ class ReportingAgent:
             "generated_at": generated_at,
             "model":        model_used,
         }
+
+
+# ---------------------------------------------------------------------------
+# Explainability Engine ("Ask the SOC" Q&A)
+# ---------------------------------------------------------------------------
+
+_EXPLAIN_SYSTEM_PROMPT = """\
+You are CHIMERA SOC. Answer the user's question using ONLY the provided incident context. Do not invent external facts. Be concise.
+"""
+
+
+def _build_explain_context(
+    incident_id: str,
+    incident_data: Dict[str, Any],
+    fixture: Dict[str, Any],
+) -> str:
+    source_ip = incident_data.get("source_ip", "185.220.101.42")
+    title = incident_data.get("title", "Security Incident")
+    severity = incident_data.get("severity", "CRITICAL")
+    risk_score = float(incident_data.get("risk_score", 0.842))
+    confidence = float(incident_data.get("confidence", 0.94))
+    mitre_tech = incident_data.get("mitre_technique", "T1190 – Exploit Public-Facing Application")
+    cert_cat = incident_data.get("cert_in_category", "Unauthorized access to IT systems or data")
+    decoy_path = incident_data.get("decoy_path", "/decoy/db-admin")
+    status = incident_data.get("status", "PENDING_APPROVAL")
+    endpoint = incident_data.get("endpoint") or fixture.get("endpoint", "/api/admin/config")
+
+    rep = fixture.get("reputation", {})
+    vt_score = rep.get("vt_score", "48/72 Engines Flagged")
+    abuse_score = rep.get("abuse_score", "96% Abuse Confidence")
+    tavily_data = fixture.get("tavily", {})
+    tavily_ans = tavily_data.get("answer", "")
+
+    chatter_list = fixture.get("chatter", [])
+    chatter_text = "\n".join(
+        f"- [{c.get('agent', 'AGENT')}] {c.get('reasoning', '')}" for c in chatter_list
+    ) if chatter_list else f"- [TRIAGE] Anomaly detected on {endpoint}.\n- [INTEL] Enriched via Tavily & VirusTotal.\n- [RISK] Calculated risk {risk_score:.3f}.\n- [DECEPTION] Routed to {decoy_path}."
+
+    return f"""\
+- Incident ID: {incident_id}
+- Target Source IP: {source_ip}
+- Target Endpoint: {endpoint}
+- Incident Title: {title}
+- Severity: {severity}
+- Incident Status: {status}
+- Composite Risk Score: {risk_score:.3f} (Autonomy Cutoff: 0.40)
+- Threat Confidence: {confidence * 100:.0f}%
+- MITRE ATT&CK: {mitre_tech}
+- CERT-In Category: {cert_cat}
+- Deception Decoy: {decoy_path}
+- VirusTotal Reputation: {vt_score}
+- AbuseIPDB Reputation: {abuse_score}
+- Threat Intel Summary: {tavily_ans or 'Active scanning and exploit node targeting web applications.'}
+- Agent Reasoning Trace:
+{chatter_text}
+- Graph Topology: {source_ip} (Attacker) ➔ WAF ➔ {decoy_path} (Honeypot)
+"""
+
+
+def _generate_deterministic_explanation(
+    incident_id: str,
+    incident_data: Dict[str, Any],
+    fixture: Dict[str, Any],
+    query: str,
+) -> str:
+    source_ip = incident_data.get("source_ip", "185.220.101.42")
+    title = incident_data.get("title", "Security Incident")
+    severity = incident_data.get("severity", "CRITICAL")
+    risk_score = float(incident_data.get("risk_score", 0.842))
+    confidence = float(incident_data.get("confidence", 0.94))
+    mitre_tech = incident_data.get("mitre_technique", "T1190 – Exploit Public-Facing Application")
+    cert_cat = incident_data.get("cert_in_category", "Unauthorized access to IT systems or data")
+    decoy_path = incident_data.get("decoy_path", "/decoy/db-admin")
+    endpoint = incident_data.get("endpoint") or fixture.get("endpoint", "/api/admin/config")
+
+    rep = fixture.get("reputation", {})
+    vt_score = rep.get("vt_score", "48/72 Engines Flagged")
+    abuse_score = rep.get("abuse_score", "96% Abuse Confidence")
+    tavily_data = fixture.get("tavily", {})
+    tavily_ans = tavily_data.get("answer", "")
+
+    q_lower = query.lower()
+
+    if any(w in q_lower for w in ["critical", "severity", "score", "risk", "classify", "classified", "classification"]):
+        return (
+            f"This incident was classified as {severity} with a Risk Score of {risk_score:.3f} and {confidence * 100:.0f}% "
+            f"detection confidence because the attacker directly targeted {endpoint} using {mitre_tech}. "
+            f"Combined with malicious IOC reputation ({vt_score}), the blast radius model evaluated potential impact "
+            f"to production database infrastructure, categorizing it under CERT-In guidelines as '{cert_cat}'."
+        )
+    elif any(w in q_lower for w in ["block", "contain", "isolated", "isolation", "quarantine", "containment", "why did we", "why block"]):
+        return (
+            f"IP {source_ip} was targeted for containment because TriageAgent identified high-entropy exploitation "
+            f"on {endpoint} matching MITRE {mitre_tech} with {confidence * 100:.0f}% confidence. ThreatIntelAgent verified "
+            f"hostile reputation ({vt_score} on VirusTotal, {abuse_score} on AbuseIPDB). RiskEngine calculated a composite "
+            f"risk score of {risk_score:.3f} (exceeding the 0.40 autonomy cutoff), justifying perimeter firewall containment "
+            f"to protect core assets while DeceptionAgent sinkholed active probes into {decoy_path}."
+        )
+
+    elif any(w in q_lower for w in ["decoy", "honeypot", "deception", "trap", "sinkhole"]):
+        return (
+            f"DeceptionAgent trapped traffic from {source_ip} by transparently rerouting the attacker to the decoy honeypot "
+            f"'{decoy_path}'. This high-interaction decoy emulates genuine administrative responses, capturing attacker "
+            f"tooling and SQL payloads without exposing production services."
+        )
+    elif any(w in q_lower for w in ["intel", "tavily", "virustotal", "abuse", "reputation", "ioc"]):
+        intel_desc = tavily_ans if tavily_ans else "Known hostile exploit origin conducting automated scanning campaigns."
+        return (
+            f"Threat Intelligence enrichment via Swytchcode and Tavily identified {source_ip} with {vt_score} on VirusTotal "
+            f"and {abuse_score} on AbuseIPDB. {intel_desc}"
+        )
+    elif any(w in q_lower for w in ["mitre", "technique", "tactic"]):
+        return (
+            f"TriageAgent mapped this incident to MITRE technique {mitre_tech}. The heuristic payload analysis matched "
+            f"exploit probes against {endpoint}, indicating unauthorized initial access attempts."
+        )
+    elif any(w in q_lower for w in ["cert", "compliance", "6-hour", "report"]):
+        return (
+            f"Under CERT-In cyber security guidelines, this incident is categorized as '{cert_cat}'. Mandatory statutory "
+            f"notification within 6 hours of detection is tracked by the active compliance clock."
+        )
+    else:
+        return (
+            f"For incident {incident_id} ({source_ip}), CHIMERA detected {title} (MITRE {mitre_tech}) with a risk score of "
+            f"{risk_score:.3f} ({confidence * 100:.0f}% confidence). Threat intelligence confirmed hostile reputation ({vt_score}), "
+            f"and the attacker was routed to {decoy_path} while perimeter containment rules were prepared."
+        )
+
+
+async def explain_incident(
+    incident_id: str,
+    query: str,
+    incident_data: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Explainability Engine for Incident Dossier Q&A ("Ask the SOC").
+    Strictly answers user questions using ONLY the provided incident context.
+    """
+    import os
+
+    if incident_data is None:
+        try:
+            from backend.main import INCIDENTS
+            incident_data = next((inc for inc in INCIDENTS if inc.get("id") == incident_id), None)
+        except Exception:
+            incident_data = None
+
+    if incident_data is None:
+        incident_data = {
+            "id": incident_id,
+            "title": "SQL Injection on Public Endpoint (/api/admin/config)",
+            "source_ip": "185.220.101.42",
+            "severity": "CRITICAL",
+            "cert_in_category": "Unauthorized access to IT systems or data",
+            "risk_score": 0.842,
+            "confidence": 0.94,
+            "status": "PENDING_APPROVAL",
+            "mitre_technique": "T1190 – Exploit Public-Facing Application",
+            "decoy_path": "/decoy/db-admin",
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
+        }
+
+    source_ip = incident_data.get("source_ip", "185.220.101.42")
+    fixture = get_demo_fixture(source_ip) or {}
+
+    # Check DEMO_MODE
+    if is_demo_mode():
+        await simulate_agent_latency(200, 350)
+        answer = _generate_deterministic_explanation(incident_id, incident_data, fixture, query)
+        return {
+            "status": "success",
+            "incident_id": incident_id,
+            "query": query,
+            "answer": answer,
+            "model": "chimera-explain-deterministic-rehearsal",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    # Live LLM inference path
+    context_bundle = _build_explain_context(incident_id, incident_data, fixture)
+    groq_api_key = os.environ.get("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
+
+    if AsyncGroq is not None and groq_api_key:
+        try:
+            groq_client = AsyncGroq(api_key=groq_api_key)
+            chat = await groq_client.chat.completions.create(
+                model=_GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": _EXPLAIN_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"[INCIDENT CONTEXT]\n{context_bundle}\n\n[USER QUESTION]\n{query}"},
+                ],
+                temperature=0.2,
+                max_tokens=600,
+            )
+            raw_ans = chat.choices[0].message.content or ""
+            answer = _strip_fences(raw_ans)
+            model_used = _GROQ_MODEL
+        except Exception as exc:
+            logger.warning(f"[Explain] Groq call failed ({exc}), falling back to deterministic explanation")
+            answer = _generate_deterministic_explanation(incident_id, incident_data, fixture, query)
+            model_used = "chimera-explain-fallback"
+    else:
+        answer = _generate_deterministic_explanation(incident_id, incident_data, fixture, query)
+        model_used = "chimera-explain-deterministic"
+
+    return {
+        "status": "success",
+        "incident_id": incident_id,
+        "query": query,
+        "answer": answer,
+        "model": model_used,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+

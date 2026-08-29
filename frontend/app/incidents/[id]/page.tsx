@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -16,10 +16,33 @@ import {
   Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSOCStream, IncidentItem } from "@/hooks/useSOCStream";
+import { AskTheSoc } from "@/components/soc/AskTheSoc";
+import { DecisionTimeline } from "@/components/soc/DecisionTimeline";
+import { ReportExportButton } from "@/components/soc/ReportExportButton";
 
 export default function IncidentDetailPage() {
   const params = useParams();
   const incidentId = (params?.id as string) || "INC-2026-0891";
+  const { incidents } = useSOCStream("ws://localhost:8000/ws/console");
+
+  const currentIncident: IncidentItem = useMemo(() => {
+    const found = incidents.find((i) => i.id === incidentId);
+    if (found) return found;
+    return {
+      id: incidentId,
+      title: "SQL Injection on Public Endpoint (/api/admin/config)",
+      source_ip: "185.220.101.42",
+      severity: "CRITICAL",
+      cert_in_category: "Unauthorized access to IT systems or data",
+      risk_score: 0.842,
+      confidence: 0.94,
+      status: "PENDING_APPROVAL",
+      mitre_technique: "T1190 – Exploit Public-Facing Application",
+      decoy_path: "/decoy/db-admin",
+      created_at: "2026-08-27 02:15:10 IST",
+    };
+  }, [incidents, incidentId]);
 
   return (
     <div className="flex flex-col h-full space-y-5">
@@ -34,11 +57,27 @@ export default function IncidentDetailPage() {
         </Link>
 
         <div className="flex items-center gap-3">
-          <span className="px-2.5 py-1 text-xs font-mono font-bold rounded bg-[#ff003c]/20 text-[#ff003c] border border-[#ff003c]/30">
-            CRITICAL SEVERITY
+          <span
+            className={cn(
+              "px-2.5 py-1 text-xs font-mono font-bold rounded border",
+              currentIncident.severity === "CRITICAL"
+                ? "bg-[#ff003c]/20 text-[#ff003c] border-[#ff003c]/30"
+                : "bg-[#ffb703]/20 text-[#ffb703] border-[#ffb703]/30"
+            )}
+          >
+            {currentIncident.severity} SEVERITY
           </span>
-          <span className="px-2.5 py-1 text-xs font-mono font-bold rounded bg-[#ffb703]/20 text-[#ffb703] border border-[#ffb703]/30 animate-pulse">
-            PENDING APPROVAL
+          <span
+            className={cn(
+              "px-2.5 py-1 text-xs font-mono font-bold rounded border uppercase",
+              currentIncident.status === "CONTAINED"
+                ? "bg-[#00ff66]/20 text-[#00ff66] border-[#00ff66]/30"
+                : currentIncident.status === "INTERCEPTED_BY_GUARDRAIL"
+                ? "bg-[#ff003c]/20 text-[#ff003c] border-[#ff003c]/30 animate-pulse"
+                : "bg-[#ffb703]/20 text-[#ffb703] border-[#ffb703]/30 animate-pulse"
+            )}
+          >
+            {currentIncident.status.replace(/_/g, " ")}
           </span>
         </div>
       </div>
@@ -47,57 +86,41 @@ export default function IncidentDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 font-mono text-xs">
         {/* Left Column: Forensic Report */}
         <div className="lg:col-span-8 flex flex-col glass-card hud-corner-border rounded-xl overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-[#00f0ff]/15 bg-[#030303]/60 flex justify-between items-center">
+          <div className="px-5 py-3.5 border-b border-[#00f0ff]/15 bg-[#030303]/60 flex flex-wrap gap-2 justify-between items-center">
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-[#00f0ff]" />
               <h1 className="text-xs font-bold text-white uppercase tracking-wider">
-                Full Forensic Dossier: {incidentId}
+                Full Forensic Dossier: {currentIncident.id}
               </h1>
             </div>
-            <span className="text-white/40">GEN: ReportingAgent v2.0</span>
+            <div className="flex items-center gap-3">
+              <ReportExportButton incident={currentIncident} variant="compact" />
+              <span className="text-white/40">GEN: ReportingAgent v2.0</span>
+            </div>
           </div>
 
           <div className="flex-1 p-6 space-y-5 overflow-y-auto">
             {/* Header Description */}
             <div className="p-4 rounded-xl border border-white/10 bg-[#030303]/80 space-y-2">
               <h2 className="text-sm font-bold text-white">
-                🛡️ Incident Analysis — T1190 Exploit Public-Facing Application
+                🛡️ Incident Analysis — {currentIncident.mitre_technique}
               </h2>
               <p className="text-white/70 leading-relaxed text-[11px]">
-                Target endpoint <code className="text-[#00f0ff]">/api/admin/config</code> was subject to multi-stage SQL injection heuristics. Origin IP <code className="text-[#ff003c]">185.220.101.42</code> matched known threat actor infrastructure. Attacker was isolated into the deception honeypot network.
+                Target endpoint <code className="text-[#00f0ff]">{currentIncident.decoy_path}</code> was subject to anomalous activity from origin IP <code className="text-[#ff003c]">{currentIncident.source_ip}</code> matching known threat actor signatures.
               </p>
             </div>
 
-            {/* Attack Chain Timeline */}
-            <div className="space-y-3">
-              <span className="text-[10px] text-white/40 uppercase block">
-                AUTONOMOUS DEFENSE TIMELINE
-              </span>
-              <div className="space-y-2 border-l border-[#00f0ff]/30 pl-4">
-                <div className="relative">
-                  <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[#00f0ff]" />
-                  <span className="text-white/40 text-[10px]">19:46:12 UTC</span>
-                  <p className="text-white font-bold">XGBoost Edge Filter triggered (Anomaly: 0.94)</p>
-                </div>
-                <div className="relative">
-                  <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[#00ff66]" />
-                  <span className="text-white/40 text-[10px]">19:46:13 UTC</span>
-                  <p className="text-white font-bold">Triage Agent mapped MITRE T1190</p>
-                </div>
-                <div className="relative">
-                  <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[#ffb703]" />
-                  <span className="text-white/40 text-[10px]">19:46:15 UTC</span>
-                  <p className="text-white font-bold">Deception Agent staged honeypot: /decoy/db-admin</p>
-                </div>
-                <div className="relative">
-                  <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[#ff003c]" />
-                  <span className="text-white/40 text-[10px]">19:46:16 UTC</span>
-                  <p className="text-white font-bold">Risk Engine calculated Dial Score: 0.6210 ➔ Escalated</p>
-                </div>
-              </div>
+            {/* Decision-Provenance Chronological Timeline */}
+            <DecisionTimeline incident={currentIncident} />
+
+            {/* Ask the SOC Explainability Q&A Interface */}
+            <div className="pt-2">
+              <AskTheSoc incidentId={currentIncident.id} incident={currentIncident} />
             </div>
           </div>
         </div>
+
+
 
         {/* Right Column: Authorization Controls & Metadata */}
         <div className="lg:col-span-4 flex flex-col gap-5">
