@@ -1,112 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { Activity, Radio, Terminal } from "lucide-react";
+import React, { useRef } from "react";
+import { Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface LogEntry {
-  id: string;
-  ip: string;
-  endpoint: string;
-  score: number;
-  action: "DROPPED" | "ESCALATED" | "AUTO_CONTAINED" | "DECEPTION_ACTIVE";
-  timestamp: string;
-}
-
-const SAMPLE_IPS = [
-  "185.220.101.42",
-  "45.154.255.89",
-  "192.168.1.105",
-  "103.203.57.18",
-  "194.26.29.112",
-  "89.248.165.74",
-  "172.16.0.24",
-  "198.51.100.14",
-];
-
-const SAMPLE_ENDPOINTS = [
-  "/api/v1/auth/login",
-  "/api/admin/config",
-  "/metrics",
-  "/decoy/db-admin",
-  "/health",
-  "/api/v2/users/export",
-  "/decoy/ssh-login",
-  "/api/internal/tokens",
-];
+import { useSOCStream } from "@/hooks/useSOCStream";
 
 export default function IncidentFeed() {
-  const [logs, setLogs] = useState<LogEntry[]>([
-    {
-      id: "evt-1001",
-      ip: "185.220.101.42",
-      endpoint: "/api/admin/config",
-      score: 0.94,
-      action: "ESCALATED",
-      timestamp: "22:01:12",
-    },
-    {
-      id: "evt-1000",
-      ip: "192.168.1.105",
-      endpoint: "/metrics",
-      score: 0.12,
-      action: "DROPPED",
-      timestamp: "22:01:10",
-    },
-    {
-      id: "evt-0999",
-      ip: "45.154.255.89",
-      endpoint: "/api/v1/auth/login",
-      score: 0.88,
-      action: "AUTO_CONTAINED",
-      timestamp: "22:01:08",
-    },
-    {
-      id: "evt-0998",
-      ip: "103.203.57.18",
-      endpoint: "/decoy/db-admin",
-      score: 0.96,
-      action: "DECEPTION_ACTIVE",
-      timestamp: "22:01:05",
-    },
-  ]);
-
+  const { logs, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
   const feedRef = useRef<HTMLDivElement>(null);
-
-  // Push new log every 1.5 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const randomIp = SAMPLE_IPS[Math.floor(Math.random() * SAMPLE_IPS.length)];
-      const randomEndpoint =
-        SAMPLE_ENDPOINTS[Math.floor(Math.random() * SAMPLE_ENDPOINTS.length)];
-      const randomScore = parseFloat((Math.random() * 0.98).toFixed(2));
-
-      let action: LogEntry["action"] = "DROPPED";
-      if (randomEndpoint.startsWith("/decoy")) {
-        action = "DECEPTION_ACTIVE";
-      } else if (randomScore >= 0.8) {
-        action = "ESCALATED";
-      } else if (randomScore >= 0.4) {
-        action = "AUTO_CONTAINED";
-      }
-
-      const now = new Date();
-      const timeStr = now.toTimeString().split(" ")[0];
-
-      const newEntry: LogEntry = {
-        id: `evt-${Math.floor(1000 + Math.random() * 9000)}`,
-        ip: randomIp,
-        endpoint: randomEndpoint,
-        score: randomScore,
-        action: action,
-        timestamp: timeStr,
-      };
-
-      setLogs((prev) => [newEntry, ...prev.slice(0, 29)]);
-    }, 1500);
-
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div className="w-full h-full min-h-[300px] flex flex-col bg-white/[0.02] backdrop-blur-md border border-white/5 rounded-xl overflow-hidden hover:border-[#00f0ff]/30 transition-all">
@@ -118,9 +19,16 @@ export default function IncidentFeed() {
             LIVE_LOG_STREAM [ingest.py]
           </h3>
         </div>
-        <div className="flex items-center gap-2 text-[10px] font-mono text-white/50">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#00ff66] animate-ping" />
-          <span className="text-[#00ff66]">INGESTING</span>
+        <div className="flex items-center gap-2 text-[10px] font-mono">
+          <span
+            className={cn(
+              "w-1.5 h-1.5 rounded-full",
+              isConnected ? "bg-[#00ff66] animate-ping" : "bg-[#ffb703]"
+            )}
+          />
+          <span className={isConnected ? "text-[#00ff66]" : "text-[#ffb703]"}>
+            {isConnected ? "WS:STREAMING" : "CONNECTING..."}
+          </span>
         </div>
       </div>
 

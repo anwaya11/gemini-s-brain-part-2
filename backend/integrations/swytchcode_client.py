@@ -167,3 +167,59 @@ class SwytchcodeConnector:
             tags,
         )
         return report
+
+
+# ---------------------------------------------------------------------------
+# Swytchcode Guardrail Policy Engine
+# ---------------------------------------------------------------------------
+
+class SwytchcodePolicyDeniedError(Exception):
+    """Raised when an agent action violates a Swytchcode pre-execution guardrail policy."""
+    def __init__(self, message: str, rule_id: str = "policy_protect_core_infrastructure"):
+        super().__init__(message)
+        self.rule_id = rule_id
+        self.category = "policy_denied"
+
+
+class SwytchcodeGuardrail:
+    """
+    Evaluates actions against pre-execution guardrail policies in .swytchcode/integrations/policies.json.
+    Intercepts rogue AI agent actions targeting protected core infrastructure.
+    """
+
+    PROTECTED_IPS = {"10.0.0.5", "127.0.0.1", "localhost"}
+    PROTECTED_SUBNETS = ["10.0.0."]
+
+    @classmethod
+    def evaluate_containment(cls, target_ip: str, action: str = "block_ip") -> dict[str, Any]:
+        """
+        Evaluate if a containment action is allowed or blocked by Swytchcode Guardrail policies.
+        """
+        clean_ip = target_ip.strip()
+
+        # Check protected core infrastructure
+        is_blocked = (
+            clean_ip in cls.PROTECTED_IPS
+            or any(clean_ip.startswith(prefix) for prefix in cls.PROTECTED_SUBNETS)
+        )
+
+        if is_blocked:
+            err_msg = (
+                f"SWYTCHCODE GUARDRAIL INTERCEPTED: Agent attempted unauthorized isolation "
+                f"on protected core infrastructure ({clean_ip})"
+            )
+            logger.error("[Swytchcode Guardrail Violation] %s", err_msg)
+            return {
+                "allowed": False,
+                "action": "POLICY_BLOCKED",
+                "category": "policy_denied",
+                "rule_id": "policy_protect_core_infrastructure",
+                "error": err_msg,
+            }
+
+        return {
+            "allowed": True,
+            "action": "ALLOW",
+            "rule_id": "policy_protect_core_infrastructure",
+        }
+

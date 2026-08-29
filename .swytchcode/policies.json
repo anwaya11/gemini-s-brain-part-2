@@ -1,0 +1,21 @@
+{
+  "defaults": {
+    "on_violation": "fail",
+    "evaluation": "pre_execution"
+  },
+  "policies": [
+    {
+      "id": "block-core-infrastructure-isolation",
+      "target": ["*"],
+      "when": {
+        "field": "target_ip",
+        "operator": "contains",
+        "value": "10.0.0.5"
+      },
+      "action": {
+        "type": "POLICY_BLOCKED",
+        "message": "SWYTCHCODE GUARDRAIL INTERCEPTED: Agent attempted unauthorized isolation on protected core infrastructure (10.0.0.5)."
+      }
+    }
+  ]
+}

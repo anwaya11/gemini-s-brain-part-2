@@ -1,0 +1,22 @@
+{
+  "editor": "gemini",
+  "integrations": {
+    "Slack.slack@1.7.0": {
+      "version": "1.7.0"
+    }
+  },
+  "mode": "sandbox",
+  "tools": {
+    "slack.chat.postmessage.create": {
+      "integration": "Slack.slack@1.7.0",
+      "version": "1.7.0",
+      "description": "Send a message to a channel"
+    },
+    "slack.chat.post_message": {
+      "integration": "Slack.slack@1.7.0",
+      "version": "1.7.0",
+      "description": "Send a message to a channel"
+    }
+  },
+  "version": "2.20.15"
+}

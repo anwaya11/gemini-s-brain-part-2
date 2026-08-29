@@ -2,3 +2,4 @@ venv/
 postgres_data/
 __pycache__/
 .env
+.swytchcode/workspace.json

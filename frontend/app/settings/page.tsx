@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Settings,
   Server,
@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Database,
   Radio,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,11 +21,70 @@ export default function SettingsPage() {
   const [n8nWebhookUrl, setN8nWebhookUrl] = useState(
     "http://localhost:5678/webhook/chimera"
   );
-  const [saved, setSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  // Fetch live configuration on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadConfig() {
+      try {
+        const res = await fetch("http://localhost:8000/api/config");
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            if (data.autonomyThreshold !== undefined) {
+              setAutonomyThreshold(String(data.autonomyThreshold));
+            } else if (data.autonomy_threshold !== undefined) {
+              setAutonomyThreshold(String(data.autonomy_threshold));
+            }
+
+            if (data.escalationThreshold !== undefined) {
+              setEscalationThreshold(String(data.escalationThreshold));
+            } else if (data.escalation_threshold !== undefined) {
+              setEscalationThreshold(String(data.escalation_threshold));
+            }
+
+            if (data.n8nWebhookUrl) {
+              setN8nWebhookUrl(data.n8nWebhookUrl);
+            } else if (data.n8n_webhook_url) {
+              setN8nWebhookUrl(data.n8n_webhook_url);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[Settings] Config fetch offline fallback:", err);
+      }
+    }
+
+    loadConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Save configuration via API
+  const handleSave = async () => {
+    if (saveStatus === "saving") return;
+    setSaveStatus("saving");
+
+    try {
+      await fetch("http://localhost:8000/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          autonomyThreshold: parseFloat(autonomyThreshold) || 0.40,
+          escalationThreshold: parseFloat(escalationThreshold) || 0.80,
+          n8nWebhookUrl: n8nWebhookUrl,
+        }),
+      });
+    } catch (err) {
+      console.warn("[Settings] Save fallback:", err);
+    } finally {
+      setSaveStatus("saved");
+      setTimeout(() => {
+        setSaveStatus("idle");
+      }, 2500);
+    }
   };
 
   return (
@@ -47,17 +107,30 @@ export default function SettingsPage() {
 
         <button
           onClick={handleSave}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#00f0ff] text-black font-mono text-xs font-bold hover:bg-[#00f0ff]/80 transition-all shadow-[0_0_15px_rgba(0,240,255,0.4)]"
+          disabled={saveStatus === "saving"}
+          className={cn(
+            "flex items-center gap-2 px-5 py-2.5 rounded-lg font-mono text-xs font-bold transition-all",
+            saveStatus === "saving"
+              ? "bg-[#ffb703]/20 border border-[#ffb703]/50 text-[#ffb703] animate-pulse cursor-wait"
+              : saveStatus === "saved"
+              ? "bg-[#00ff66]/20 border border-[#00ff66]/60 text-[#00ff66] shadow-[0_0_15px_rgba(0,255,102,0.3)]"
+              : "bg-[#00f0ff] text-black hover:bg-[#00f0ff]/80 shadow-[0_0_15px_rgba(0,240,255,0.4)]"
+          )}
         >
-          {saved ? (
+          {saveStatus === "saving" ? (
             <>
-              <CheckCircle2 className="w-4 h-4 text-black" />
-              CONFIG SAVED!
+              <Loader2 className="w-4 h-4 animate-spin text-[#ffb703]" />
+              <span>SAVING...</span>
+            </>
+          ) : saveStatus === "saved" ? (
+            <>
+              <CheckCircle2 className="w-4 h-4 text-[#00ff66]" />
+              <span>CONFIG SAVED</span>
             </>
           ) : (
             <>
               <Save className="w-4 h-4" />
-              APPLY SETTINGS
+              <span>APPLY SETTINGS</span>
             </>
           )}
         </button>
