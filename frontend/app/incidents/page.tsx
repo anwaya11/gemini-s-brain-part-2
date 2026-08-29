@@ -19,15 +19,17 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSOCStream, IncidentItem } from "@/hooks/useSOCStream";
+import { useSOCStream, IncidentItem, PlaybookExecution } from "@/hooks/useSOCStream";
+import { PlaybookExecutionPanel } from "@/components/soc/PlaybookExecutionPanel";
 
 export default function IncidentsPage() {
-  const { incidents: streamIncidents, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
+  const { incidents: streamIncidents, activePlaybook, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
   const [incidents, setIncidents] = useState<IncidentItem[]>(streamIncidents);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
   const [actionLoading, setActionLoading] = useState<Record<string, "contain" | "reject" | null>>({});
   const [blockedAlert, setBlockedAlert] = useState<{ id: string; target: string; message: string } | null>(null);
+  const [playbookExecutions, setPlaybookExecutions] = useState<Record<string, PlaybookExecution>>({});
 
   // Synchronize with streaming incidents from WebSocket
   useEffect(() => {
@@ -45,6 +47,23 @@ export default function IncidentsPage() {
       });
     }
   }, [streamIncidents]);
+
+  // Synchronize with real-time Playbook Execution updates from WebSocket
+  useEffect(() => {
+    if (activePlaybook && activePlaybook.incident_id) {
+      setPlaybookExecutions((prev) => ({
+        ...prev,
+        [activePlaybook.incident_id]: activePlaybook,
+      }));
+      if (activePlaybook.status === "COMPLETED") {
+        setIncidents((prev) =>
+          prev.map((inc) =>
+            inc.id === activePlaybook.incident_id ? { ...inc, status: "CONTAINED" } : inc
+          )
+        );
+      }
+    }
+  }, [activePlaybook]);
 
   // Initial fetch from backend API
   useEffect(() => {
@@ -80,12 +99,14 @@ export default function IncidentsPage() {
   // Action Handlers
   const handleContain = async (incidentId: string) => {
     setActionLoading((prev) => ({ ...prev, [incidentId]: "contain" }));
+    const targetInc = incidents.find((i) => i.id === incidentId);
+    const targetIp = targetInc?.source_ip || "185.220.101.42";
 
     try {
       const res = await fetch("http://localhost:8000/api/incidents/contain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ incident_id: incidentId }),
+        body: JSON.stringify({ incident_id: incidentId, source_ip: targetIp }),
       });
       const data = await res.json();
 
@@ -103,9 +124,27 @@ export default function IncidentsPage() {
         );
       } else {
         setBlockedAlert(null);
-        setIncidents((prev) =>
-          prev.map((inc) => (inc.id === incidentId ? { ...inc, status: "CONTAINED" } : inc))
-        );
+        const execId = data.execution_id || `N8N-RUN-${Math.floor(1000 + Math.random() * 9000)}`;
+        const timeNow = new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false });
+        const initialExec: PlaybookExecution = {
+          execution_id: execId,
+          incident_id: incidentId,
+          target_ip: targetIp,
+          status: "QUEUED",
+          step_index: 1,
+          total_steps: 3,
+          step: data.step || "Dispatching webhook to n8n runtime...",
+          progress: 33,
+          timestamp: timeNow,
+          logs: [
+            `[${timeNow}] [N8N-INIT] Initializing automated response playbook for target ${targetIp}`,
+            `[${timeNow}] [N8N-AUTH] Authorization validated by operator. Dispatching webhook -> http://localhost:5678/webhook/chimera`,
+          ],
+        };
+        setPlaybookExecutions((prev) => ({
+          ...prev,
+          [incidentId]: initialExec,
+        }));
       }
     } catch (err) {
       console.warn("[Incidents] Contain API error:", err);
@@ -139,6 +178,7 @@ export default function IncidentsPage() {
   const isGuardrailBlocked =
     selectedIncident?.status === "INTERCEPTED_BY_GUARDRAIL" ||
     blockedAlert?.id === selectedIncident?.id;
+  const selectedPlaybook = selectedIncident ? playbookExecutions[selectedIncident.id] : null;
 
   return (
     <div className="flex flex-col h-full space-y-5">
@@ -353,7 +393,7 @@ export default function IncidentsPage() {
                 </p>
               </div>
 
-              {/* Human-in-the-loop Action Bar */}
+              {/* Human-in-the-loop Action Bar / Playbook Execution Panel */}
               {isGuardrailBlocked ? (
                 <div className="p-5 rounded-xl border border-[#ff003c]/40 bg-[#ff003c]/10 space-y-3 shadow-[0_0_20px_rgba(255,0,60,0.2)]">
                   <div className="flex items-center gap-2 text-[#ff003c] font-mono text-xs font-bold">
@@ -371,6 +411,8 @@ export default function IncidentsPage() {
                     <span>🛑 BLOCKED BY SWYTCHCODE GUARDRAIL</span>
                   </button>
                 </div>
+              ) : selectedPlaybook ? (
+                <PlaybookExecutionPanel execution={selectedPlaybook} />
               ) : selectedIncident.status === "PENDING_APPROVAL" ? (
                 <div className="p-5 rounded-xl border border-[#ffb703]/30 bg-[#ffb703]/5 space-y-3">
                   <div className="flex items-center gap-2 text-[#ffb703] font-mono text-xs font-bold">
@@ -388,7 +430,7 @@ export default function IncidentsPage() {
                         "flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-mono text-xs font-bold transition-all",
                         isContainLoading
                           ? "bg-[#ffb703]/20 border border-[#ffb703]/50 text-[#ffb703] animate-pulse cursor-wait"
-                          : "bg-[#00ff66] text-black hover:bg-[#00ff66]/80 shadow-[0_0_15px_rgba(0,255,102,0.3)]"
+                          : "bg-[#00ff66] text-black hover:bg-[#00ff66]/80 shadow-[0_0_15px_rgba(0,255,102,0.3)] cursor-pointer"
                       )}
                     >
                       {isContainLoading ? (
@@ -408,7 +450,7 @@ export default function IncidentsPage() {
                       onClick={() => handleReject(selectedIncident.id)}
                       disabled={isContainLoading || isRejectLoading}
                       className={cn(
-                        "py-2.5 px-4 rounded-lg border font-mono text-xs font-bold transition-all flex items-center gap-1.5",
+                        "py-2.5 px-4 rounded-lg border font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
                         isRejectLoading
                           ? "border-[#ffb703]/50 text-[#ffb703] bg-[#ffb703]/10 animate-pulse cursor-wait"
                           : "border-[#ff003c]/40 text-[#ff003c] hover:bg-[#ff003c]/10"

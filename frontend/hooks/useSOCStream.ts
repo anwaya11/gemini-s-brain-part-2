@@ -70,6 +70,19 @@ export interface SOCConfig {
   containment_webhook: string;
 }
 
+export interface PlaybookExecution {
+  execution_id: string;
+  incident_id: string;
+  target_ip: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  step_index: number;
+  total_steps: number;
+  step: string;
+  progress: number;
+  timestamp: string;
+  logs: string[];
+}
+
 export interface SOCStreamState {
   logs: LogEntry[];
   chatter: AgentChatMessage[];
@@ -79,6 +92,7 @@ export interface SOCStreamState {
   incidents: IncidentItem[];
   config: SOCConfig;
   demoMode: boolean;
+  activePlaybook?: PlaybookExecution | null;
   isConnected: boolean;
 }
 
@@ -311,6 +325,7 @@ let globalState: SOCStreamState = {
     containment_webhook: "http://localhost:5678/webhook/chimera",
   },
   demoMode: true,
+  activePlaybook: null,
   isConnected: false,
 };
 
@@ -534,7 +549,17 @@ function handleIncomingMessage(rawText: string) {
       notifyListeners();
     }
 
-    // ── 9. System Snapshot on Connection Handshake ────────────────────
+    // ── 9. Playbook Execution Lifecycle Real-time Broadcast ───────────
+    else if (messageType === "playbook") {
+      const pb = (payload.data || payload) as PlaybookExecution;
+      globalState = {
+        ...globalState,
+        activePlaybook: pb,
+      };
+      notifyListeners();
+    }
+
+    // ── 10. System Snapshot on Connection Handshake ───────────────────
     else if (messageType === "system" && payload) {
       if (payload.config) {
         globalState = { ...globalState, config: { ...globalState.config, ...payload.config } };
