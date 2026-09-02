@@ -40,7 +40,7 @@ export default function IncidentDetailPage() {
       status: "PENDING_APPROVAL",
       mitre_technique: "T1190 – Exploit Public-Facing Application",
       decoy_path: "/decoy/db-admin",
-      created_at: "2026-08-27 02:15:10 IST",
+      created_at: new Date().toISOString(),
     };
   }, [incidents, incidentId]);
 

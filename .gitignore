@@ -1,5 +1,8 @@
 venv/
+.venv/
 postgres_data/
 __pycache__/
 .env
+.env*
+node_modules/
 .swytchcode/workspace.json

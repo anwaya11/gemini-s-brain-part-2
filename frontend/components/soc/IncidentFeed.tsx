@@ -3,7 +3,7 @@
 import React, { useRef } from "react";
 import { Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSOCStream } from "@/hooks/useSOCStream";
+import { useSOCStream, formatLocalTime } from "@/hooks/useSOCStream";
 
 export default function IncidentFeed() {
   const { logs, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
@@ -57,8 +57,8 @@ export default function IncidentFeed() {
               )}
             >
               <div className="flex items-center gap-2.5 truncate max-w-[65%]">
-                <span className="text-white/40 text-[10px] shrink-0">
-                  {log.timestamp}
+                <span className="text-white/40 text-[10px] shrink-0 font-mono">
+                  {formatLocalTime(log.timestamp)}
                 </span>
                 <span className="font-bold shrink-0">{log.ip}</span>
                 <span className="text-white/60 truncate">{log.endpoint}</span>

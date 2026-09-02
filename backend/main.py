@@ -10,16 +10,37 @@ state management, and multi-agent orchestration.
 import asyncio
 import json
 import logging
+import sys
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+# Ensure project root is in sys.path so 'backend.*' imports resolve cleanly
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import settings
+from backend.db.models import Incident, Event, Action, Report, DecisionEdge, GraphEdge
+from backend.db.postgres import (
+    get_db,
+    init_db,
+    get_all_incidents,
+    create_incident,
+    update_incident_status,
+    record_agent_action,
+    record_decision_edge,
+    record_event,
+)
 from backend.deception.decoy_routes import decoy_router
 from backend.fixtures.loader import (
     is_demo_mode,
@@ -40,7 +61,7 @@ edge_filter = EdgeFilter()
 SOC_CONFIG: Dict[str, Any] = {
     "edge_threshold": 0.80,
     "autonomy_cutoff": 0.40,
-    "containment_webhook": "http://localhost:5678/webhook/chimera",
+    "containment_webhook": settings.N8N_WEBHOOK_URL or "https://anwaya.app.n8n.cloud/webhook/162f577a-ccbe-4750-b04a-d554d6faed7e",
 }
 
 
@@ -57,161 +78,25 @@ def map_cert_in_category(title: str = "", source_ip: str = "", mitre: str = "", 
 
 
 # ── Dynamic In-Memory Incident Store ──────────────────────────────────────
-INCIDENTS: List[Dict[str, Any]] = [
-    {
-        "id": "INC-2026-0892",
-        "title": "Unauthorized Core Subnet Target Isolation (10.0.0.5)",
-        "source_ip": "10.0.0.5",
-        "severity": "CRITICAL",
-        "cert_in_category": "Compromise of critical systems/information",
-        "risk_score": 0.950,
-        "confidence": 0.99,
-        "status": "PENDING_APPROVAL",
-        "mitre_technique": "T1565 – Data & Service Destruction",
-        "decoy_path": "/core/db-primary",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
-    },
-    {
-        "id": "INC-2026-0891",
-        "title": "SQL Injection on Public Endpoint (/api/admin/config)",
-        "source_ip": "185.220.101.42",
-        "severity": "CRITICAL",
-        "cert_in_category": "Unauthorized access to IT systems or data",
-        "risk_score": 0.842,
-        "confidence": 0.94,
-        "status": "PENDING_APPROVAL",
-        "mitre_technique": "T1190 – Exploit Public-Facing Application",
-        "decoy_path": "/decoy/db-admin",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
-    },
-    {
-        "id": "INC-2026-0890",
-        "title": "Credential Stuffing / SSH Brute Force Campaign",
-        "source_ip": "45.154.255.89",
-        "severity": "HIGH",
-        "cert_in_category": "Identity theft, spoofing, and phishing attacks",
-        "risk_score": 0.385,
-        "confidence": 0.88,
-        "status": "CONTAINED",
-        "mitre_technique": "T1110 – Brute Force Credentials",
-        "decoy_path": "/decoy/ssh-login",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
-    },
-    {
-        "id": "INC-2026-0889",
-        "title": "Internal Reconnaissance & Port Probing",
-        "source_ip": "103.203.57.18",
-        "severity": "MEDIUM",
-        "cert_in_category": "Targeted scanning/probing of critical networks/systems",
-        "risk_score": 0.320,
-        "confidence": 0.72,
-        "status": "CONTAINED",
-        "mitre_technique": "T1046 – Network Service Discovery",
-        "decoy_path": "/decoy/health-internal",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
-    },
-    {
-        "id": "INC-2026-0888",
-        "title": "Unsecured Configuration Exfiltration Attempt",
-        "source_ip": "194.26.29.112",
-        "severity": "HIGH",
-        "cert_in_category": "Unauthorized access to IT systems or data",
-        "risk_score": 0.710,
-        "confidence": 0.86,
-        "status": "PENDING_APPROVAL",
-        "mitre_technique": "T1552 – Unsecured Credentials & Config",
-        "decoy_path": "/decoy/config",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
-    },
-]
+INCIDENTS: List[Dict[str, Any]] = []
 
 
-# ── Dynamic In-Memory Topology Graph ──────────────────────────────────────
+# ── Dynamic In-Memory Topology Graph (Clean Baseline) ─────────────────────
 TOPOLOGY_GRAPH: Dict[str, Any] = {
     "nodes": [
-        {"id": "attacker-185.220.101.42", "label": "185.220.101.42 (Attacker)", "color": "#ff003c", "val": 8},
-        {"id": "waf", "label": "Cloudflare WAF / Perimeter", "color": "#00f0ff", "val": 6},
-        {"id": "gateway", "label": "API Gateway Service", "color": "#00f0ff", "val": 5},
-        {"id": "decoy-db", "label": "Decoy DB (/decoy/db-admin)", "color": "#ffb703", "val": 7},
-        {"id": "decoy-ssh", "label": "Decoy SSH (/decoy/ssh-login)", "color": "#ffb703", "val": 5},
-        {"id": "core_db", "label": "Core Postgres DB (ISOLATED)", "color": "#00ff66", "val": 6},
+        {"id": "CoreDB", "label": "Core DB (Protected)", "color": "#00ff88", "val": 6},
+        {"id": "Gateway", "label": "API / Perimeter Gateway", "color": "#00d4ff", "val": 5},
+        {"id": "Honeypot", "label": "Decoy Honeypot", "color": "#ffb700", "val": 5},
     ],
     "links": [
-        {"source": "attacker-185.220.101.42", "target": "waf"},
-        {"source": "waf", "target": "gateway"},
-        {"source": "gateway", "target": "decoy-db"},
-        {"source": "waf", "target": "decoy-ssh"},
-        {"source": "gateway", "target": "core_db"},
+        {"source": "Gateway", "target": "CoreDB"},
+        {"source": "Gateway", "target": "Honeypot"},
     ],
 }
 
 
 # ── Robust WebSocket ConnectionManager ─────────────────────────────────────
-class ConnectionManager:
-    """
-    Error-isolated WebSocket connection manager.
-    Safely broadcasts JSON telemetry to all connected Next.js consoles
-    without ever raising unhandled exceptions or breaking the HTTP pipeline.
-    """
-
-    def __init__(self):
-        self._active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
-        self._active_connections.append(websocket)
-        logger.info(f"[WS] Client connected. Total active: {len(self._active_connections)}")
-
-        # Send initial handshake welcome with current state snapshots & demo mode
-        await self.send_to(
-            websocket,
-            {
-                "type": "system",
-                "payload": {
-                    "status": "connected",
-                    "timestamp": datetime.now().strftime("%H:%M:%S"),
-                    "config": SOC_CONFIG,
-                    "incidents": INCIDENTS,
-                    "graph": TOPOLOGY_GRAPH,
-                    "demo_mode": is_demo_mode(),
-                },
-            },
-        )
-
-    def disconnect(self, websocket: WebSocket) -> None:
-        if websocket in self._active_connections:
-            self._active_connections.remove(websocket)
-            logger.info(f"[WS] Client disconnected. Total active: {len(self._active_connections)}")
-
-    async def send_to(self, websocket: WebSocket, data: Dict[str, Any]) -> None:
-        try:
-            await websocket.send_text(json.dumps(data))
-        except Exception:
-            self.disconnect(websocket)
-
-    async def broadcast(self, data: Dict[str, Any]) -> None:
-        """Broadcast payload to all active WebSocket clients safely."""
-        if not self._active_connections:
-            return
-
-        message_text = json.dumps(data)
-        stale_connections = []
-
-        for ws in list(self._active_connections):
-            try:
-                await ws.send_text(message_text)
-            except Exception:
-                stale_connections.append(ws)
-
-        for ws in stale_connections:
-            self.disconnect(ws)
-
-    @property
-    def connection_count(self) -> int:
-        return len(self._active_connections)
-
-
-manager = ConnectionManager()
+from backend.routers.ws import manager, emit_agent_chatter, emit_incident, emit_event
 
 
 # ── Lifespan Context Manager ──────────────────────────────────────────────
@@ -219,7 +104,8 @@ manager = ConnectionManager()
 async def lifespan(app: FastAPI):
     """
     Application startup & shutdown handler.
-    Preloads ML artifacts and verifies optional Postgres database connection.
+    Preloads ML artifacts, verifies PostgreSQL connection, and automatically
+    resets demo tables to guarantee a clean 3-node initial state on every startup.
     """
     logger.info(f"[CHIMERA] Starting {settings.PROJECT_NAME} ({settings.ENVIRONMENT})")
     logger.info(f"[CHIMERA] Backend running on port: {settings.BACKEND_PORT}")
@@ -229,16 +115,17 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("[CHIMERA] XGBoost model using heuristic fallback [OK]")
 
-    # Verify optional DB connection non-blockingly
+    # Initialize DB connection, create schema tables, and automatically clear tables for clean demo state
     try:
-        from backend.db.postgres import engine
-        from sqlalchemy import text
-
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        logger.info("[CHIMERA] PostgreSQL database connected [OK]")
+        from backend.db.postgres import init_db
+        from backend.db.reset_demo import reset_demo_database
+        await init_db()
+        await reset_demo_database()
+        INCIDENTS.clear()
+        logger.info("[CHIMERA] PostgreSQL database connected, schema verified, and demo tables automatically reset [OK]")
     except Exception as exc:
-        logger.warning(f"[CHIMERA] PostgreSQL not available ({exc}). Running in memory/mock persistence mode.")
+        INCIDENTS.clear()
+        logger.warning(f"[CHIMERA] PostgreSQL startup reset note: {exc}")
 
     yield
 
@@ -388,7 +275,7 @@ async def ingest_log(payload: RawLogPayload):
                 (fixture.get("cert_in_category") if fixture else None)
                 or map_cert_in_category(attack_title, source_ip, mitre_tech, endpoint)
             )
-            created_incident = {
+            inc_dict = {
                 "id": f"INC-2026-{uuid.uuid4().hex[:4].upper()}",
                 "title": attack_title,
                 "source_ip": source_ip,
@@ -399,11 +286,53 @@ async def ingest_log(payload: RawLogPayload):
                 "status": "PENDING_APPROVAL",
                 "mitre_technique": mitre_tech,
                 "decoy_path": endpoint if is_decoy else "/decoy/db-admin",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
+                "endpoint": endpoint,
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
+            # Persist directly to PostgreSQL database
+            try:
+                from backend.db.postgres import create_incident as db_create_inc, record_decision_edge
+                created_incident = await db_create_inc(inc_dict)
+                await record_decision_edge(
+                    source_node=f"ip:{source_ip}",
+                    target_node=f"endpoint:{endpoint}",
+                    edge_type="anomalous_ingress",
+                    incident_id=created_incident["id"],
+                    agent_name="EdgeFilter",
+                    reasoning=f"Anomaly score {xgb_score:.4f} exceeded cutoff {autonomy_cutoff:.2f}",
+                    metadata={"xgb_score": xgb_score, "action": action},
+                )
+            except Exception as db_err:
+                logger.warning(f"[DB] Ingest incident persist note: {db_err}")
+                created_incident = inc_dict
+
             INCIDENTS.insert(0, created_incident)
             if len(INCIDENTS) > 20:
                 INCIDENTS.pop()
+
+    # Persist log event into PostgreSQL
+    try:
+        from backend.db.postgres import record_event as db_record_event
+        await db_record_event(
+            event_id=event_id,
+            source=source_ip,
+            event_type="http_log",
+            severity=severity,
+            payload={
+                "source_ip": source_ip,
+                "destination_ip": payload.destination_ip,
+                "endpoint": endpoint,
+                "method": payload.method,
+                "headers": payload.headers,
+                "body": payload.body,
+                "xgb_score": round(xgb_score, 4),
+                "action": action,
+            },
+            raw_log=str(raw_log),
+            incident_id=created_incident["id"] if created_incident else None,
+        )
+    except Exception as db_err:
+        logger.debug(f"[DB] Log event persist note: {db_err}")
 
     # 6. Immediate WebSocket Telemetry Broadcasts
     # Log Stream Broadcast
@@ -548,12 +477,246 @@ async def ingest_log(payload: RawLogPayload):
 
 # ── Incident Management Endpoints ─────────────────────────────────────────
 @app.get("/api/incidents", tags=["Incidents"])
-async def get_incidents():
-    """Return all active and historical incidents."""
-    return {
-        "status": "success",
-        "incidents": INCIDENTS,
-    }
+async def get_incidents(db: AsyncSession = Depends(get_db)):
+    """
+    Return all active and historical incidents queried directly from PostgreSQL
+    using the injected SQLAlchemy async session.
+    """
+    try:
+        stmt = select(Incident).order_by(Incident.created_at.desc())
+        result = await db.execute(stmt)
+        incidents = result.scalars().all()
+        if incidents:
+            incidents_data = [inc.to_dict() for inc in incidents]
+            # Keep in-memory cache in sync
+            INCIDENTS.clear()
+            INCIDENTS.extend(incidents_data)
+            return {
+                "status": "success",
+                "incidents": incidents_data,
+            }
+
+        # If DB is empty, seed initial incidents
+        for inc_seed in INCIDENTS:
+            new_inc = Incident(
+                id=inc_seed["id"],
+                title=inc_seed["title"],
+                source_ip=inc_seed.get("source_ip", "127.0.0.1"),
+                severity=inc_seed.get("severity", "HIGH"),
+                cert_in_category=inc_seed.get("cert_in_category"),
+                risk_score=float(inc_seed.get("risk_score", 0.0)),
+                confidence=float(inc_seed.get("confidence", 0.0)),
+                status=inc_seed.get("status", "PENDING_APPROVAL"),
+                mitre_technique=inc_seed.get("mitre_technique"),
+                decoy_path=inc_seed.get("decoy_path"),
+                blast_radius=inc_seed.get("blast_radius") or {},
+                metadata_json=inc_seed.get("metadata") or {},
+            )
+            db.add(new_inc)
+        await db.commit()
+        stmt = select(Incident).order_by(Incident.created_at.desc())
+        res = await db.execute(stmt)
+        seeded_data = [i.to_dict() for i in res.scalars().all()]
+        return {
+            "status": "success",
+            "incidents": seeded_data,
+        }
+    except Exception as e:
+        logger.warning(f"[DB] Fetch incidents fallback: {e}")
+        return {
+            "status": "success",
+            "incidents": INCIDENTS,
+        }
+
+
+@app.get("/api/incidents/{incident_id}", tags=["Incidents"])
+async def get_incident(incident_id: str, db: AsyncSession = Depends(get_db)):
+    """Return a single incident by ID from PostgreSQL."""
+    try:
+        stmt = select(Incident).where(Incident.id == incident_id)
+        result = await db.execute(stmt)
+        inc = result.scalar_one_or_none()
+        if inc:
+            return {
+                "status": "success",
+                "incident": inc.to_dict(),
+            }
+    except Exception as e:
+        logger.warning(f"[DB] Fetch incident {incident_id} error: {e}")
+
+    mem_inc = next((i for i in INCIDENTS if i["id"] == incident_id), None)
+    if mem_inc:
+        return {"status": "success", "incident": mem_inc}
+    raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+
+
+# ── Decision-Provenance & Graph Endpoints ─────────────────────────────────
+@app.get("/api/incidents/{incident_id}/decisions", tags=["Provenance"])
+async def get_incident_decisions(incident_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Return the full decision-provenance graph trace for a specific incident from PostgreSQL.
+    """
+    try:
+        stmt = (
+            select(DecisionEdge)
+            .where(DecisionEdge.incident_id == incident_id)
+            .order_by(DecisionEdge.created_at.asc())
+        )
+        result = await db.execute(stmt)
+        edges = result.scalars().all()
+        return {
+            "status": "success",
+            "incident_id": incident_id,
+            "decisions": [edge.to_dict() for edge in edges],
+            "total_decisions": len(edges),
+        }
+    except Exception as e:
+        logger.warning(f"[DB] Fetch incident decisions error: {e}")
+        return {
+            "status": "fallback",
+            "incident_id": incident_id,
+            "decisions": [],
+            "error": str(e),
+        }
+
+
+@app.get("/api/decisions", tags=["Provenance"])
+async def get_all_decisions(
+    incident_id: Optional[str] = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve decision provenance edges from PostgreSQL."""
+    try:
+        stmt = select(DecisionEdge)
+        if incident_id:
+            stmt = stmt.where(DecisionEdge.incident_id == incident_id)
+        stmt = stmt.order_by(DecisionEdge.created_at.desc()).limit(limit)
+        result = await db.execute(stmt)
+        edges = result.scalars().all()
+        return {
+            "status": "success",
+            "decisions": [edge.to_dict() for edge in edges],
+            "count": len(edges),
+        }
+    except Exception as e:
+        logger.warning(f"[DB] Fetch decisions error: {e}")
+        return {"status": "fallback", "decisions": [], "error": str(e)}
+
+
+@app.get("/api/graph", tags=["Topology"])
+@app.get("/api/topology", tags=["Topology"])
+async def get_topology_graph(db: AsyncSession = Depends(get_db)):
+    """
+    Return dynamic attack topology and decision-provenance graph from PostgreSQL.
+    Extracts live nodes and edges stored in graph_edges and decision_edges.
+    """
+    try:
+        stmt = select(GraphEdge).order_by(GraphEdge.created_at.desc()).limit(100)
+        result = await db.execute(stmt)
+        edges = result.scalars().all()
+
+        nodes_dict: Dict[str, Dict[str, Any]] = {
+            "waf": {"id": "waf", "label": "Cloudflare WAF / Perimeter", "color": "#00f0ff", "val": 6},
+            "gateway": {"id": "gateway", "label": "API Gateway Service", "color": "#00f0ff", "val": 5},
+            "decoy-db": {"id": "decoy-db", "label": "Decoy DB (/decoy/db-admin)", "color": "#ffb703", "val": 7},
+            "decoy-ssh": {"id": "decoy-ssh", "label": "Decoy SSH (/decoy/ssh-login)", "color": "#ffb703", "val": 5},
+            "core_db": {"id": "core_db", "label": "Core Postgres DB (ISOLATED)", "color": "#00ff66", "val": 6},
+        }
+        links: List[Dict[str, str]] = [
+            {"source": "waf", "target": "gateway"},
+            {"source": "gateway", "target": "decoy-db"},
+            {"source": "waf", "target": "decoy-ssh"},
+            {"source": "gateway", "target": "core_db"},
+        ]
+
+        seen_links = {f"{l['source']}->{l['target']}" for l in links}
+
+        for edge in edges:
+            src = edge.source_node
+            tgt = edge.target_node
+            src_clean = src.replace("ip:", "attacker-").replace("decoy:", "decoy-").replace("endpoint:", "ep-")
+            tgt_clean = tgt.replace("ip:", "attacker-").replace("decoy:", "decoy-").replace("endpoint:", "ep-")
+
+            if src_clean not in nodes_dict:
+                color = "#ff003c" if "attacker" in src_clean or "ip:" in src else "#00f0ff"
+                nodes_dict[src_clean] = {
+                    "id": src_clean,
+                    "label": f"{src.replace('ip:', '')} (Attacker)" if "attacker" in src_clean else src,
+                    "color": color,
+                    "val": 8 if "attacker" in src_clean else 5,
+                }
+            if tgt_clean not in nodes_dict:
+                color = "#ffb703" if "decoy" in tgt_clean else "#00ff66"
+                nodes_dict[tgt_clean] = {
+                    "id": tgt_clean,
+                    "label": tgt,
+                    "color": color,
+                    "val": 6,
+                }
+
+            link_key = f"{src_clean}->{tgt_clean}"
+            if link_key not in seen_links:
+                links.append({"source": src_clean, "target": tgt_clean})
+                seen_links.add(link_key)
+
+        return {
+            "status": "success",
+            "graph": {
+                "nodes": list(nodes_dict.values()),
+                "links": links,
+            },
+            "nodes": list(nodes_dict.values()),
+            "links": links,
+        }
+    except Exception as e:
+        logger.warning(f"[DB] Fetch topology graph error: {e}")
+        return {
+            "status": "success",
+            "graph": TOPOLOGY_GRAPH,
+            "nodes": TOPOLOGY_GRAPH["nodes"],
+            "links": TOPOLOGY_GRAPH["links"],
+        }
+
+
+@app.get("/api/events", tags=["Events"])
+async def get_events(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve raw ingested telemetry events from PostgreSQL."""
+    try:
+        stmt = select(Event).order_by(Event.timestamp.desc()).limit(limit)
+        result = await db.execute(stmt)
+        events = result.scalars().all()
+        return {
+            "status": "success",
+            "events": [event.to_dict() for event in events],
+            "count": len(events),
+        }
+    except Exception as e:
+        logger.warning(f"[DB] Fetch events error: {e}")
+        return {"status": "fallback", "events": [], "error": str(e)}
+
+
+@app.get("/api/reports/{incident_id}", tags=["Reports"])
+async def get_incident_report(
+    incident_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve generated forensic report for an incident from PostgreSQL."""
+    try:
+        stmt = select(Report).where(Report.incident_id == incident_id).order_by(Report.created_at.desc())
+        result = await db.execute(stmt)
+        report = result.scalar_one_or_none()
+        if report:
+            return {
+                "status": "success",
+                "report": report.to_dict(),
+            }
+    except Exception as e:
+        logger.warning(f"[DB] Fetch report error: {e}")
+    return {"status": "not_found", "message": f"No report found for incident {incident_id}"}
 
 
 async def _run_containment_playbook_lifecycle(incident_id: str, target_ip: str, execution_id: str):
@@ -564,9 +727,10 @@ async def _run_containment_playbook_lifecycle(incident_id: str, target_ip: str, 
     time_str = datetime.now().strftime("%H:%M:%S")
 
     # ── Stage 1: QUEUED (Dispatching) ──
+    webhook_target = settings.N8N_WEBHOOK_URL or "https://anwaya.app.n8n.cloud/webhook/162f577a-ccbe-4750-b04a-d554d6faed7e"
     stage1_logs = [
         f"[{time_str}] [N8N-INIT] Initializing automated response playbook for target {target_ip}",
-        f"[{time_str}] [N8N-AUTH] Authorization validated by operator. Dispatching webhook -> http://localhost:5678/webhook/chimera",
+        f"[{time_str}] [N8N-AUTH] Authorization validated by operator. Dispatching webhook -> {webhook_target}",
     ]
     await manager.broadcast({
         "type": "playbook",
@@ -623,7 +787,18 @@ async def _run_containment_playbook_lifecycle(incident_id: str, target_ip: str, 
     # Trigger n8n webhook playbook in background if active
     try:
         from backend.integrations.n8n_client import trigger_containment
-        await trigger_containment(incident_id=incident_id, action="block_ip", ip=target_ip)
+        target_inc = next((inc for inc in INCIDENTS if inc.get("id") == incident_id), {}) or {}
+        mitre_tech = target_inc.get("mitre") or target_inc.get("mitre_technique") or "T1190 - Exploit Public-Facing Application"
+        r_score = target_inc.get("risk_score") if target_inc.get("risk_score") is not None else 0.88
+
+        await trigger_containment(
+            incident_id=incident_id,
+            action="block_ip",
+            ip=target_ip,
+            target_ip=target_ip,
+            mitre_technique=mitre_tech,
+            risk_score=r_score,
+        )
     except Exception as e:
         logger.warning(f"[Playbook] n8n dispatch note: {e}")
 
@@ -653,6 +828,21 @@ async def _run_containment_playbook_lifecycle(incident_id: str, target_ip: str, 
     target_inc = next((inc for inc in INCIDENTS if inc["id"] == incident_id), None)
     if target_inc:
         target_inc["status"] = "CONTAINED"
+
+    # Persist updated status and action to PostgreSQL
+    try:
+        from backend.db.postgres import update_incident_status, record_agent_action
+        await update_incident_status(incident_id, "CONTAINED")
+        await record_agent_action(
+            incident_id=incident_id,
+            action_type="block_ip",
+            status="SUCCESS",
+            playbook_name="n8n_ip_containment",
+            payload={"target_ip": target_ip, "incident_id": incident_id},
+            result={"execution_id": execution_id, "status": "COMPLETED"},
+        )
+    except Exception as db_err:
+        logger.warning(f"[DB] Lifecycle DB note: {db_err}")
 
     await manager.broadcast({
         "type": "playbook",
@@ -747,6 +937,30 @@ async def contain_incident(payload: IncidentActionPayload):
         if target_inc:
             target_inc["status"] = "INTERCEPTED_BY_GUARDRAIL"
 
+        # Persist guardrail intercept to PostgreSQL
+        try:
+            from backend.db.postgres import update_incident_status, record_agent_action, record_decision_edge
+            await update_incident_status(payload.incident_id, "INTERCEPTED_BY_GUARDRAIL")
+            await record_agent_action(
+                incident_id=payload.incident_id,
+                action_type="block_ip",
+                status="BLOCKED_BY_GUARDRAIL",
+                playbook_name="swytchcode_policy_guardrail",
+                payload={"target_ip": target_ip, "incident_id": payload.incident_id},
+                result={"status": "blocked", "reason": block_reason, "error": error_msg},
+            )
+            await record_decision_edge(
+                source_node="agent:SwytchcodeGuardrail",
+                target_node=f"ip:{target_ip}",
+                edge_type="policy_intercept",
+                incident_id=payload.incident_id,
+                agent_name="GuardrailAgent",
+                reasoning=f"Unauthorized isolation on protected subnet ({target_ip}) blocked by policy.",
+                metadata={"error": error_msg, "action": "block_ip"},
+            )
+        except Exception as db_err:
+            logger.warning(f"[DB] Guardrail DB note: {db_err}")
+
         # Broadcast critical alert chatter over WebSocket (/ws/console)
         guardrail_alert = {
             "type": "chatter",
@@ -803,6 +1017,30 @@ async def contain_incident(payload: IncidentActionPayload):
         )
     )
 
+    # Persist in-progress status and action to PostgreSQL
+    try:
+        from backend.db.postgres import update_incident_status, record_agent_action, record_decision_edge
+        await update_incident_status(payload.incident_id, "CONTAINMENT_IN_PROGRESS")
+        await record_agent_action(
+            incident_id=payload.incident_id,
+            action_type="block_ip",
+            status="IN_PROGRESS",
+            playbook_name="n8n_ip_containment",
+            payload={"target_ip": target_ip, "incident_id": payload.incident_id},
+            result={"execution_id": execution_id, "status": "INITIATED"},
+        )
+        await record_decision_edge(
+            source_node="agent:ContainmentAgent",
+            target_node=f"ip:{target_ip}",
+            edge_type="containment_dispatch",
+            incident_id=payload.incident_id,
+            agent_name="ContainmentAgent",
+            reasoning=f"Operator authorized threat containment playbook {execution_id} for target {target_ip}.",
+            metadata={"execution_id": execution_id, "action": "block_ip"},
+        )
+    except Exception as db_err:
+        logger.warning(f"[DB] Contain DB note: {db_err}")
+
     return {
         "status": "contained",
         "execution_id": execution_id,
@@ -828,6 +1066,22 @@ async def reject_incident(payload: IncidentActionPayload):
         target_ip = target_inc["source_ip"]
     else:
         target_ip = payload.source_ip or "Unknown"
+
+    # Persist rejection to PostgreSQL
+    try:
+        from backend.db.postgres import update_incident_status, record_decision_edge
+        await update_incident_status(payload.incident_id, "REJECTED")
+        await record_decision_edge(
+            source_node="agent:Operator",
+            target_node=f"incident:{payload.incident_id}",
+            edge_type="incident_rejected",
+            incident_id=payload.incident_id,
+            agent_name="RiskEngine",
+            reasoning=f"Incident {payload.incident_id} marked as FALSE POSITIVE / REJECTED by operator.",
+            metadata={"incident_id": payload.incident_id, "status": "REJECTED"},
+        )
+    except Exception as db_err:
+        logger.warning(f"[DB] Reject DB note: {db_err}")
 
     await manager.broadcast({
         "type": "chatter",
@@ -855,7 +1109,11 @@ async def reject_incident(payload: IncidentActionPayload):
 
 
 @app.post("/api/incidents/{incident_id}/explain", tags=["Incidents"])
-async def explain_incident_endpoint(incident_id: str, payload: IncidentExplainRequest):
+async def explain_incident_endpoint(
+    incident_id: str,
+    payload: IncidentExplainRequest,
+    db: AsyncSession = Depends(get_db),
+):
     """
     'Ask the SOC' Explainability Endpoint.
     Answers natural language queries about a specific incident, strictly grounded
@@ -863,7 +1121,19 @@ async def explain_incident_endpoint(incident_id: str, payload: IncidentExplainRe
     """
     from backend.agents.reporting_agent import explain_incident
 
-    target_inc = next((inc for inc in INCIDENTS if inc["id"] == incident_id), None)
+    target_inc = None
+    try:
+        stmt = select(Incident).where(Incident.id == incident_id)
+        result = await db.execute(stmt)
+        inc = result.scalar_one_or_none()
+        if inc:
+            target_inc = inc.to_dict()
+    except Exception as e:
+        logger.warning(f"[DB] Explain incident lookup error: {e}")
+
+    if not target_inc:
+        target_inc = next((inc for inc in INCIDENTS if inc["id"] == incident_id), None)
+
     result = await explain_incident(incident_id=incident_id, query=payload.query, incident_data=target_inc)
     return result
 
@@ -929,6 +1199,21 @@ async def ws_console(websocket: WebSocket):
     Streams logs, multi-agent chatter, risk dials, intel dossiers, and topology graph updates.
     """
     await manager.connect(websocket)
+
+    # Send initial snapshot immediately upon client connection
+    try:
+        from backend.db.postgres import get_all_incidents
+        db_incs = await get_all_incidents()
+        if db_incs:
+            await websocket.send_text(
+                json.dumps({"type": "incidents", "data": db_incs})
+            )
+        await websocket.send_text(
+            json.dumps({"type": "config", "data": SOC_CONFIG})
+        )
+    except Exception as exc:
+        logger.debug(f"[WS] Initial snapshot note: {exc}")
+
     try:
         while True:
             raw_text = await websocket.receive_text()
@@ -986,6 +1271,37 @@ async def set_demo_mode_endpoint(payload: Dict[str, Any]):
     }
 
 
+@app.post("/api/system/reset-demo", tags=["System"])
+async def reset_demo_endpoint():
+    """
+    Clear all demo data from PostgreSQL and in-memory caches,
+    and broadcast clean reset state over WebSockets.
+    """
+    try:
+        from backend.db.reset_demo import reset_demo_database
+        await reset_demo_database()
+        INCIDENTS.clear()
+        await manager.broadcast({
+            "type": "incidents",
+            "data": [],
+        })
+        await manager.broadcast({
+            "type": "graph",
+            "nodes": TOPOLOGY_GRAPH["nodes"],
+            "links": TOPOLOGY_GRAPH["links"],
+        })
+        return {
+            "status": "success",
+            "message": "All demo tables truncated and state reset to 0.",
+        }
+    except Exception as e:
+        logger.error(f"Reset demo error: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+        }
+
+
 # ── Health Probe ──────────────────────────────────────────────────────────
 @app.get("/health", tags=["System"])
 async def health_check():
@@ -1001,3 +1317,8 @@ async def health_check():
 
 # ── Include Decoy Honeypot Router ─────────────────────────────────────────
 app.include_router(decoy_router, tags=["Deception"])
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=settings.BACKEND_PORT or 8000, reload=True)

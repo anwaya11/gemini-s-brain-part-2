@@ -3,7 +3,7 @@
 import React, { useRef } from "react";
 import { Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSOCStream } from "@/hooks/useSOCStream";
+import { useSOCStream, formatLocalTime } from "@/hooks/useSOCStream";
 
 export default function AgentChatter() {
   const { chatter, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
@@ -60,7 +60,7 @@ export default function AgentChatter() {
                   </span>
                 )}
               </div>
-              <span className="text-[10px] text-white/30">{msg.timestamp}</span>
+              <span className="text-[10px] text-white/30">{formatLocalTime(msg.timestamp)}</span>
             </div>
 
             <p className="text-white/80 text-[11px] leading-relaxed pl-1">

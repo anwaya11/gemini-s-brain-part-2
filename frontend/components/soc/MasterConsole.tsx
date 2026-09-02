@@ -1,14 +1,26 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import IncidentFeed from "@/components/soc/IncidentFeed";
 import AgentChatter from "@/components/soc/AgentChatter";
 import BlastRadiusGraph from "@/components/soc/BlastRadiusGraph";
 import RiskDial from "@/components/soc/RiskDial";
 import BreachCostAvoidedCard from "@/components/soc/BreachCostAvoidedCard";
 import { Activity } from "lucide-react";
+import { hydrateFromBackend } from "@/hooks/useSOCStream";
 
 export function MasterConsole() {
+  // Fetch historical incidents & telemetry logs on mount to hydrate LIVE_LOG_STREAM & BLAST_RADIUS before WebSocket takes over
+  useEffect(() => {
+    async function fetchHistoricalData() {
+      try {
+        await hydrateFromBackend();
+      } catch (err) {
+        console.warn("[MasterConsole] Historical data hydration note:", err);
+      }
+    }
+    fetchHistoricalData();
+  }, []);
   return (
     <div className="w-full h-full flex flex-col gap-6">
       {/* HUD Header */}

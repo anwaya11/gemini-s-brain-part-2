@@ -2,33 +2,14 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TrendingUp, ShieldCheck, IndianRupee, Sparkles, CheckCircle2 } from "lucide-react";
+import { TrendingUp, ShieldCheck, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSOCStream } from "@/hooks/useSOCStream";
-
-// IBM Cost of a Data Breach Report 2026 Grounding Constants
-export const BASE_EXPOSURE_PER_CONTAINED_INCIDENT = 5100000; // ₹51,00,000 (scaled per-incident exposure avoided)
-export const IBM_INDIA_AVG_BREACH_COST = 255000000; // ₹25.5 Crore (25,50,00,000)
-
-/**
- * Formats a monetary amount into the Indian numbering system:
- * - >= 1 Crore (10,000,000): "₹X.XX Cr"
- * - >= 1 Lakh (100,000): "₹X.X L"
- * - Default: "₹X,XX,XXX"
- */
-export function formatIndianCurrency(amount: number): string {
-  if (amount >= 10000000) {
-    const cr = amount / 10000000;
-    return `₹${cr.toFixed(2)} Cr`;
-  } else if (amount >= 100000) {
-    const lakh = amount / 100000;
-    return `₹${lakh.toFixed(1)} L`;
-  } else if (amount === 0) {
-    return "₹0.00 Cr";
-  } else {
-    return `₹${amount.toLocaleString("en-IN")}`;
-  }
-}
+import {
+  useSOCStream,
+  getIncidentAvertedCost,
+  formatIndianCurrency,
+  IBM_INDIA_AVG_BREACH_COST,
+} from "@/hooks/useSOCStream";
 
 interface BreachCostAvoidedCardProps {
   className?: string;
@@ -39,37 +20,64 @@ export default function BreachCostAvoidedCard({
   className,
   compact = false,
 }: BreachCostAvoidedCardProps) {
-  const { incidents, activePlaybook, isConnected } = useSOCStream(
-    "ws://localhost:8000/ws/console"
-  );
+  const {
+    incidents,
+    activePlaybook,
+    totalSaved: streamTotalSaved,
+    lastIncidentCost,
+    isConnected,
+  } = useSOCStream("ws://localhost:8000/ws/console");
 
-  // Pure arithmetic on existing incident state (count of CONTAINED incidents)
+  // Calculate baseline from contained incidents if totalSaved is initializing
   const containedCount = useMemo(() => {
     const containedSet = new Set(
       (incidents || [])
         .filter((i) => i.status === "CONTAINED")
         .map((i) => i.id)
     );
-    if (activePlaybook?.status === "COMPLETED" && activePlaybook.incident_id) {
+    if (
+      activePlaybook?.status === "COMPLETED" &&
+      activePlaybook.incident_id
+    ) {
       containedSet.add(activePlaybook.incident_id);
     }
     return containedSet.size;
   }, [incidents, activePlaybook]);
 
-  const targetAmount = containedCount * BASE_EXPOSURE_PER_CONTAINED_INCIDENT;
+  const baselineCalculated = useMemo(() => {
+    const seen = new Set<string>();
+    let total = 0;
+    (incidents || []).forEach((i) => {
+      if (i.status === "CONTAINED" && !seen.has(i.id)) {
+        seen.add(i.id);
+        total += getIncidentAvertedCost(i.id);
+      }
+    });
+    return total;
+  }, [incidents]);
 
-  // Smooth numeric counter animation state
-  const [displayAmount, setDisplayAmount] = useState<number>(targetAmount);
+  const currentTargetAmount = Math.max(streamTotalSaved || 0, baselineCalculated);
+
+  // Live ticking state for monetary amount
+  const [totalSaved, setTotalSaved] = useState<number>(currentTargetAmount);
+  const [displayAmount, setDisplayAmount] = useState<number>(currentTargetAmount);
   const [isPulsing, setIsPulsing] = useState<boolean>(false);
   const [justIncremented, setJustIncremented] = useState<boolean>(false);
-  const prevCountRef = useRef<number>(containedCount);
+  const prevAmountRef = useRef<number>(currentTargetAmount);
   const animFrameRef = useRef<number | null>(null);
 
-  // Real-time smooth increment animation whenever an incident is contained
+  // Synchronize when stream sends new totalSaved value
+  useEffect(() => {
+    if (currentTargetAmount !== totalSaved) {
+      setTotalSaved(currentTargetAmount);
+    }
+  }, [currentTargetAmount]);
+
+  // Real-time smooth counter animation whenever totalSaved ticks up live
   useEffect(() => {
     const startVal = displayAmount;
-    const endVal = targetAmount;
-    const isIncrease = containedCount > prevCountRef.current;
+    const endVal = totalSaved;
+    const isIncrease = totalSaved > prevAmountRef.current;
 
     if (isIncrease) {
       setIsPulsing(true);
@@ -79,10 +87,10 @@ export default function BreachCostAvoidedCard({
         setJustIncremented(false);
       }, 3000);
 
-      prevCountRef.current = containedCount;
+      prevAmountRef.current = totalSaved;
 
-      // Animate smoothly over 900ms
-      const duration = 900;
+      // Animate smoothly over 600ms
+      const duration = 600;
       const startTime = performance.now();
 
       const step = (now: number) => {
@@ -109,9 +117,9 @@ export default function BreachCostAvoidedCard({
       };
     } else {
       setDisplayAmount(endVal);
-      prevCountRef.current = containedCount;
+      prevAmountRef.current = totalSaved;
     }
-  }, [targetAmount, containedCount]);
+  }, [totalSaved]);
 
   const formattedValue = formatIndianCurrency(displayAmount);
   const rawIndianFormatted = `₹${Math.round(displayAmount).toLocaleString("en-IN")}`;
@@ -181,7 +189,7 @@ export default function BreachCostAvoidedCard({
                 exit={{ opacity: 0, scale: 0.85 }}
                 className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-bold text-[#00ff66] bg-[#00ff66]/20 border border-[#00ff66]/50 rounded shadow-[0_0_10px_rgba(0,255,102,0.3)] animate-pulse uppercase"
               >
-                +₹51.0L PREVENTED
+                +{formatIndianCurrency(lastIncidentCost || 150000)} PREVENTED
               </motion.span>
             )}
           </AnimatePresence>
@@ -224,7 +232,7 @@ export default function BreachCostAvoidedCard({
           <span className="font-bold">{containedCount}</span>
           <span className="text-white/60">CONTAINED</span>
           <span className="text-white/30">|</span>
-          <span className="text-white/50">₹51L / inc</span>
+          <span className="text-white/50">₹50K - ₹2.5L / inc</span>
         </div>
       </div>
 

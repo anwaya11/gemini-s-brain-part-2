@@ -111,20 +111,14 @@ async def ingest_log(
 
     async def _persist():
         try:
-            await execute_query(
-                """
-                INSERT INTO events (id, event_type, source, severity, payload, raw_log, timestamp)
-                VALUES (:id, :event_type, :source, :severity, :payload::jsonb, :raw_log, :timestamp)
-                """,
-                {
-                    "id": event_id,
-                    "event_type": "http_log",
-                    "source": payload.source_ip,
-                    "severity": severity,
-                    "payload": json.dumps(event_payload),
-                    "raw_log": json.dumps(raw_log),
-                    "timestamp": now,
-                },
+            from backend.db.postgres import record_event
+            await record_event(
+                event_id=event_id,
+                source=payload.source_ip,
+                event_type="http_log",
+                severity=severity,
+                payload=event_payload,
+                raw_log=json.dumps(raw_log),
             )
         except Exception as e:
             print(f"[Ingest] DB persist error for {event_id}: {e}")

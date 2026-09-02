@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from backend.db.postgres import execute_query
+from backend.db.postgres import execute_query, record_decision_edge, init_db
 
 logger = logging.getLogger(__name__)
 
@@ -122,27 +122,12 @@ class DeceptionAgent:
 
     async def _ensure_graph_edges_table(self) -> None:
         """
-        Create the ``graph_edges`` table if it doesn't exist yet.
-        Safe to call on every startup or lazily on first use.
+        Create all tables if they don't exist yet via SQLAlchemy Base metadata.
         """
-        await execute_query(
-            """
-            CREATE TABLE IF NOT EXISTS graph_edges (
-                id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                source_node  TEXT        NOT NULL,
-                target_node  TEXT        NOT NULL,
-                edge_type    TEXT        NOT NULL,
-                metadata     JSONB       NOT NULL DEFAULT '{}',
-                created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
-            );
-            CREATE INDEX IF NOT EXISTS idx_graph_edges_source
-                ON graph_edges (source_node);
-            CREATE INDEX IF NOT EXISTS idx_graph_edges_target
-                ON graph_edges (target_node);
-            CREATE INDEX IF NOT EXISTS idx_graph_edges_type
-                ON graph_edges (edge_type);
-            """
-        )
+        try:
+            await init_db()
+        except Exception as e:
+            logger.debug("_ensure_graph_edges_table note: %s", e)
 
     async def _persist_edge(
         self,
@@ -152,37 +137,18 @@ class DeceptionAgent:
         metadata: dict[str, Any],
     ) -> dict[str, Any]:
         """
-        Insert a ``redirected_to`` edge into ``graph_edges``.
+        Insert a ``redirected_to`` edge into ``graph_edges`` and ``decision_edges``.
 
         Returns the persisted edge record as a dict.
         """
-        now = datetime.now(timezone.utc).isoformat()
-        import json as _json
-
-        await execute_query(
-            """
-            INSERT INTO graph_edges (id, source_node, target_node, edge_type, metadata, created_at)
-            VALUES (:id, :source_node, :target_node, :edge_type, :metadata::jsonb, :created_at)
-            ON CONFLICT (id) DO NOTHING;
-            """,
-            {
-                "id": edge_id,
-                "source_node": source_node,
-                "target_node": target_node,
-                "edge_type": "redirected_to",
-                "metadata": _json.dumps(metadata),
-                "created_at": now,
-            },
+        return await record_decision_edge(
+            source_node=source_node,
+            target_node=target_node,
+            edge_type="redirected_to",
+            agent_name="DeceptionAgent",
+            reasoning=f"Attacker {metadata.get('attacker_ip')} routed to honeypot {metadata.get('decoy_path')}",
+            metadata=metadata,
         )
-
-        return {
-            "id": edge_id,
-            "source_node": source_node,
-            "target_node": target_node,
-            "edge_type": "redirected_to",
-            "metadata": metadata,
-            "created_at": now,
-        }
 
     # ------------------------------------------------------------------
     # Public interface

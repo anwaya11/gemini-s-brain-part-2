@@ -19,7 +19,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSOCStream, IncidentItem, PlaybookExecution } from "@/hooks/useSOCStream";
+import { useSOCStream, IncidentItem, PlaybookExecution, formatLocalTime } from "@/hooks/useSOCStream";
 import { PlaybookExecutionPanel } from "@/components/soc/PlaybookExecutionPanel";
 import { CertInClock } from "@/components/soc/CertInClock";
 import { AskTheSoc } from "@/components/soc/AskTheSoc";
@@ -77,7 +77,13 @@ export default function IncidentsPage() {
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.incidents)) {
-            setIncidents(data.incidents);
+            setIncidents((prev) => {
+              const map = new Map<string, IncidentItem>(prev.map((i) => [i.id, i]));
+              data.incidents.forEach((inc: IncidentItem) => map.set(inc.id, inc));
+              return Array.from(map.values()).sort(
+                (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+              );
+            });
             if (!selectedIncidentId && data.incidents.length > 0) {
               setSelectedIncidentId(data.incidents[0].id);
             }
@@ -351,7 +357,7 @@ export default function IncidentsPage() {
               <div className="flex items-center gap-3">
                 <ReportExportButton incident={selectedIncident} variant="compact" />
                 <span className="text-xs font-mono text-white/40">
-                  {selectedIncident.created_at}
+                  {formatLocalTime(selectedIncident.created_at)}
                 </span>
               </div>
             </div>

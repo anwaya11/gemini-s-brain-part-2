@@ -1,3 +1,51 @@
-from backend.db.postgres import engine, get_db, execute_query, fetch_all, fetch_one
+from backend.db.models import (
+    Base,
+    Incident,
+    Event,
+    Action,
+    Report,
+    DecisionEdge,
+    GraphEdge,
+)
+from backend.db.postgres import (
+    engine,
+    AsyncSessionLocal,
+    get_db,
+    init_db,
+    execute_query,
+    fetch_all,
+    fetch_one,
+    create_incident,
+    get_all_incidents,
+    get_incident_by_id,
+    update_incident_status,
+    record_event,
+    record_agent_action,
+    record_decision_edge,
+    record_report,
+)
 
-__all__ = ["engine", "get_db", "execute_query", "fetch_all", "fetch_one"]
+__all__ = [
+    "Base",
+    "Incident",
+    "Event",
+    "Action",
+    "Report",
+    "DecisionEdge",
+    "GraphEdge",
+    "engine",
+    "AsyncSessionLocal",
+    "get_db",
+    "init_db",
+    "execute_query",
+    "fetch_all",
+    "fetch_one",
+    "create_incident",
+    "get_all_incidents",
+    "get_incident_by_id",
+    "update_incident_status",
+    "record_event",
+    "record_agent_action",
+    "record_decision_edge",
+    "record_report",
+]
