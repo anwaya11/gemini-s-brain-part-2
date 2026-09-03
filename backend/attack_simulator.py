@@ -6,13 +6,14 @@ Continuously feeds realistic threat vectors and decoy triggers with true-randomi
 unique IP addresses into the FastAPI ingest pipeline at exactly 4-second intervals.
 """
 
+import os
 import time
 import random
 import sys
 from datetime import datetime, timezone
 import requests
 
-TARGET_URL = "http://127.0.0.1:8000/api/ingest"
+TARGET_URL = os.getenv("TARGET_URL", "https://chimera-backend-5jwu.onrender.com/api/ingest")
 
 # ANSI Color Codes for terminal formatting
 CYAN = "\033[96m"
@@ -176,7 +177,7 @@ def run_simulator():
         except requests.exceptions.ConnectionError:
             print(
                 f"[{local_time_str}] #{counter:03d} "
-                f"{RED}[CONN_ERROR]{RESET} Cannot connect to {TARGET_URL}. Is FastAPI running on port 8000?"
+                f"{RED}[CONN_ERROR]{RESET} Cannot connect to {TARGET_URL}. Is the backend online?"
             )
         except Exception as exc:
             print(

@@ -8,6 +8,7 @@ and CRUD persistence helpers for Project-CHIMERA using SQLAlchemy 2.0.
 import logging
 import os
 import re
+import ssl
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 import uuid
@@ -54,7 +55,10 @@ is_cloud_db = (
 
 connect_args: Dict[str, Any] = {}
 if is_cloud_db:
-    connect_args["ssl"] = True
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    connect_args["ssl"] = ctx
     connect_args["prepared_statement_cache_size"] = 0
     # Strip sslmode parameter from URL to prevent asyncpg unexpected keyword error
     if "sslmode=" in ASYNC_DATABASE_URL:

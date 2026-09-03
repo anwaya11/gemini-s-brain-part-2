@@ -6,9 +6,10 @@ requests and real-world attack vectors against the CHIMERA ingest endpoint.
 
 Usage:
     python simulator/attack_replay.py
-    python simulator/attack_replay.py --target http://localhost:8000/api/ingest --rounds 3 --delay 0.3
+    python simulator/attack_replay.py --target https://chimera-backend-5jwu.onrender.com/api/ingest --rounds 3 --delay 0.3
 """
 
+import os
 import asyncio
 import argparse
 import random
@@ -25,7 +26,7 @@ except ImportError:
 
 
 # ── Default Configuration ─────────────────────────────────────────────────
-DEFAULT_TARGET = "http://localhost:8000/api/ingest"
+DEFAULT_TARGET = os.getenv("TARGET_URL", "https://chimera-backend-5jwu.onrender.com/api/ingest")
 DEFAULT_ROUNDS = 2
 DEFAULT_DELAY_MIN = 0.05
 DEFAULT_DELAY_MAX = 0.3

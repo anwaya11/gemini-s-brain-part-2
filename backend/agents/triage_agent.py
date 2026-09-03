@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from typing import Any, Dict, List, Optional
 try:
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 # LLM configuration
 # ---------------------------------------------------------------------------
 
-_GROQ_MODEL = "llama-3.3-70b-versatile"
+_GROQ_MODEL = os.getenv("GROQ_MODEL", getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile"))
 
 _SYSTEM_PROMPT = """\
 You are CHIMERA Triage — a senior SOC analyst AI embedded in an autonomous
