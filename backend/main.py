@@ -10,6 +10,7 @@ state management, and multi-agent orchestration.
 import asyncio
 import json
 import logging
+import os
 import sys
 import uuid
 from contextlib import asynccontextmanager
@@ -115,17 +116,22 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("[CHIMERA] XGBoost model using heuristic fallback [OK]")
 
-    # Initialize DB connection, create schema tables, and automatically clear tables for clean demo state
+    # Initialize DB connection, create schema tables, and conditionally reset demo tables
     try:
         from backend.db.postgres import init_db
-        from backend.db.reset_demo import reset_demo_database
         await init_db()
-        await reset_demo_database()
-        INCIDENTS.clear()
-        logger.info("[CHIMERA] PostgreSQL database connected, schema verified, and demo tables automatically reset [OK]")
+
+        auto_reset_enabled = os.getenv("AUTO_RESET_DEMO_DB", "false").lower() in ("true", "1")
+        if settings.ENVIRONMENT == "development" and auto_reset_enabled:
+            from backend.db.reset_demo import reset_demo_database
+            await reset_demo_database()
+            INCIDENTS.clear()
+            logger.info("[CHIMERA] Demo mode: PostgreSQL tables cleared for clean presentation [OK]")
+        else:
+            logger.info("[CHIMERA] Persistent mode: PostgreSQL connected and records preserved across startup [OK]")
     except Exception as exc:
         INCIDENTS.clear()
-        logger.warning(f"[CHIMERA] PostgreSQL startup reset note: {exc}")
+        logger.warning(f"[CHIMERA] PostgreSQL startup initialization note: {exc}")
 
     yield
 
@@ -146,9 +152,23 @@ app = FastAPI(
 )
 
 # ── CORS Middleware ───────────────────────────────────────────────────────
+# W3C Fetch spec compliant CORS configuration (avoids wildcard allow_origins with credentials)
+_raw_origins = os.getenv("CORS_ORIGINS")
+if _raw_origins:
+    cors_origins = [orig.strip() for orig in _raw_origins.split(",") if orig.strip()]
+else:
+    cors_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "https://chimera-soc.vercel.app",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app"),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1321,4 +1341,5 @@ app.include_router(decoy_router, tags=["Deception"])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=settings.BACKEND_PORT or 8000, reload=True)
+    port = int(os.getenv("PORT") or settings.BACKEND_PORT or 8000)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=port, reload=(settings.ENVIRONMENT == "development"))

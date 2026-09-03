@@ -7,6 +7,7 @@ and CRUD persistence helpers for Project-CHIMERA using SQLAlchemy 2.0.
 
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 import uuid
@@ -32,14 +33,34 @@ from backend.db.models import (
 
 logger = logging.getLogger("chimera.db")
 
-# Resolve Database URL (prefer asyncpg dialect prefix)
+# Resolve Database URL (support postgres://, postgresql://, and asyncpg dialect prefix)
 DATABASE_URL: str = os.getenv("DATABASE_URL") or settings.DATABASE_URL
-if DATABASE_URL.startswith("postgresql://"):
+if DATABASE_URL.startswith("postgres://"):
+    ASYNC_DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
     ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 elif DATABASE_URL.startswith("postgresql+asyncpg://"):
     ASYNC_DATABASE_URL = DATABASE_URL
 else:
     ASYNC_DATABASE_URL = settings.async_database_url
+
+# Detect cloud or managed database connections requiring SSL & pooler resilience
+is_cloud_db = (
+    any(domain in ASYNC_DATABASE_URL for domain in ("neon.tech", "supabase", "amazonaws.com", "render.com", "railway.app", "pooler."))
+    or "sslmode" in ASYNC_DATABASE_URL
+    or os.getenv("DB_SSL_REQUIRE", "").lower() in ("true", "1")
+    or ("localhost" not in ASYNC_DATABASE_URL and "127.0.0.1" not in ASYNC_DATABASE_URL)
+)
+
+connect_args: Dict[str, Any] = {}
+if is_cloud_db:
+    connect_args["ssl"] = True
+    connect_args["prepared_statement_cache_size"] = 0
+    # Strip sslmode parameter from URL to prevent asyncpg unexpected keyword error
+    if "sslmode=" in ASYNC_DATABASE_URL:
+        ASYNC_DATABASE_URL = re.sub(r"[?&]sslmode=[^&]+", "", ASYNC_DATABASE_URL)
+        if "?" not in ASYNC_DATABASE_URL and "&" in ASYNC_DATABASE_URL:
+            ASYNC_DATABASE_URL = ASYNC_DATABASE_URL.replace("&", "?", 1)
 
 # ---------------------------------------------------------------------------
 # Async Engine & Session Factory
@@ -51,6 +72,7 @@ engine: AsyncEngine = create_async_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    connect_args=connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(

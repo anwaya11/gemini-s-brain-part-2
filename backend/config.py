@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
+from pydantic import Field, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Root directory of the project and backend directory
@@ -23,7 +24,7 @@ class Settings(BaseSettings):
     # Application Configuration
     PROJECT_NAME: str = "Project-CHIMERA"
     ENVIRONMENT: str = "development"
-    BACKEND_PORT: int = 8000
+    BACKEND_PORT: int = Field(default=8000, validation_alias=AliasChoices("PORT", "BACKEND_PORT"))
     FRONTEND_PORT: int = 3000
 
     # Database Configuration
@@ -56,6 +57,8 @@ class Settings(BaseSettings):
     def async_database_url(self) -> str:
         """Ensure database URL has the asyncpg dialect prefix."""
         url = self.DATABASE_URL
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+asyncpg://", 1)
         if url.startswith("postgresql://"):
             return url.replace("postgresql://", "postgresql+asyncpg://", 1)
         return url
