@@ -1,4 +1,4 @@
-# Project-CHIMERA Backend Dependencies
+# Project-CHIMERA Backend & Service Dependencies
 
 # FastAPI & Web Server
 fastapi>=0.110.0
