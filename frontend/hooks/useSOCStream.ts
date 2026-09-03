@@ -709,9 +709,9 @@ export async function hydrateFromBackend() {
   if (typeof window === "undefined") return;
   try {
     const [incRes, graphRes, eventsRes] = await Promise.allSettled([
-      fetch("http://localhost:8000/api/incidents"),
-      fetch("http://localhost:8000/api/graph"),
-      fetch("http://localhost:8000/api/events"),
+      fetch("https://chimera-backend-5jwu.onrender.com/api/incidents"),
+      fetch("https://chimera-backend-5jwu.onrender.com/api/graph"),
+      fetch("https://chimera-backend-5jwu.onrender.com/api/events"),
     ]);
 
     let updated = false;
@@ -903,9 +903,9 @@ export async function hydrateFromBackend() {
 
 /**
  * useSOCStream — Custom React Hook connecting directly to FastAPI WebSocket
- * Endpoint: ws://localhost:8000/ws/console
+ * Endpoint: wss://chimera-backend-5jwu.onrender.com/ws/console
  */
-export function useSOCStream(url: string = "ws://localhost:8000/ws/console"): SOCStreamState {
+export function useSOCStream(url: string = "wss://chimera-backend-5jwu.onrender.com/ws/console"): SOCStreamState {
   const [state, setState] = useState<SOCStreamState>(globalState);
   const urlRef = useRef(url);
   urlRef.current = url;

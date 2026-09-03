@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useSOCStream, formatLocalTime } from "@/hooks/useSOCStream";
 
 export default function IncidentFeed() {
-  const { logs, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
+  const { logs, isConnected } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
   const feedRef = useRef<HTMLDivElement>(null);
 
   return (

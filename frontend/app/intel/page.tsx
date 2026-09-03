@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { useSOCStream, IntelRecord } from "@/hooks/useSOCStream";
 
 export default function ThreatIntelPage() {
-  const { intelList, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
+  const { intelList, isConnected } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIocId, setSelectedIocId] = useState<string>("");
 

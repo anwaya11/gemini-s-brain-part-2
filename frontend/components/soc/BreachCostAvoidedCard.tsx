@@ -26,7 +26,7 @@ export default function BreachCostAvoidedCard({
     totalSaved: streamTotalSaved,
     lastIncidentCost,
     isConnected,
-  } = useSOCStream("ws://localhost:8000/ws/console");
+  } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
 
   // Calculate baseline from contained incidents if totalSaved is initializing
   const containedCount = useMemo(() => {

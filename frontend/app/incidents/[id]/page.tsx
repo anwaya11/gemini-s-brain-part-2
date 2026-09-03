@@ -24,7 +24,7 @@ import { ReportExportButton } from "@/components/soc/ReportExportButton";
 export default function IncidentDetailPage() {
   const params = useParams();
   const incidentId = (params?.id as string) || "INC-2026-0891";
-  const { incidents } = useSOCStream("ws://localhost:8000/ws/console");
+  const { incidents } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
 
   const currentIncident: IncidentItem = useMemo(() => {
     const found = incidents.find((i) => i.id === incidentId);

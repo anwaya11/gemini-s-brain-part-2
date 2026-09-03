@@ -53,7 +53,7 @@ const BASE_LINKS: GraphLink[] = [
 ];
 
 export default function BlastRadiusGraph() {
-  const { incidents, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
+  const { incidents, isConnected } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
   const containerRef = useRef<HTMLDivElement>(null);
   const fgRef = useRef<any>(null);
 

@@ -6,7 +6,7 @@ import { ShieldAlert, Unlock, Radio } from "lucide-react";
 import { useSOCStream } from "@/hooks/useSOCStream";
 
 export default function RiskDial({ initialRisk = 0.2 }: { initialRisk?: number }) {
-  const { riskScore, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
+  const { riskScore, isConnected } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
   
   // Safe numeric risk initialization to prevent hydration mismatch
   const [risk, setRisk] = useState<number>(() => {

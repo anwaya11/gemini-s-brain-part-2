@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useSOCStream, formatLocalTime } from "@/hooks/useSOCStream";
 
 export default function AgentChatter() {
-  const { chatter, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
+  const { chatter, isConnected } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
   const chatterRef = useRef<HTMLDivElement>(null);
 
   return (

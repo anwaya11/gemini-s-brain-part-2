@@ -55,7 +55,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { demoMode: streamDemoMode } = useSOCStream("ws://localhost:8000/ws/console");
+  const { demoMode: streamDemoMode } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
   const [demoMode, setDemoMode] = useState<boolean>(true);
   const [isTogglingDemo, setIsTogglingDemo] = useState<boolean>(false);
   const [utcTime, setUtcTime] = useState<string>("");
@@ -73,7 +73,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function checkDemoMode() {
       try {
-        const res = await fetch("http://localhost:8000/api/system/demo-mode");
+        const res = await fetch("https://chimera-backend-5jwu.onrender.com/api/system/demo-mode");
         if (res.ok) {
           const data = await res.json();
           if (typeof data.demo_mode === "boolean") {
@@ -92,7 +92,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setDemoMode(nextState);
     setIsTogglingDemo(true);
     try {
-      await fetch("http://localhost:8000/api/system/demo-mode", {
+      await fetch("https://chimera-backend-5jwu.onrender.com/api/system/demo-mode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: nextState }),

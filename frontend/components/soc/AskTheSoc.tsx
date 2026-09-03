@@ -70,7 +70,7 @@ export function AskTheSoc({ incidentId, incident, className }: AskTheSocProps) {
 
     try {
       const res = await fetch(
-        `http://localhost:8000/api/incidents/${incidentId}/explain`,
+        `https://chimera-backend-5jwu.onrender.com/api/incidents/${incidentId}/explain`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

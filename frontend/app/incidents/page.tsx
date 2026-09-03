@@ -27,7 +27,7 @@ import { DecisionTimeline } from "@/components/soc/DecisionTimeline";
 import { ReportExportButton } from "@/components/soc/ReportExportButton";
 
 export default function IncidentsPage() {
-  const { incidents: streamIncidents, activePlaybook, isConnected } = useSOCStream("ws://localhost:8000/ws/console");
+  const { incidents: streamIncidents, activePlaybook, isConnected } = useSOCStream("wss://chimera-backend-5jwu.onrender.com/ws/console");
   const [incidents, setIncidents] = useState<IncidentItem[]>(streamIncidents);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
@@ -73,7 +73,7 @@ export default function IncidentsPage() {
   useEffect(() => {
     async function fetchInitial() {
       try {
-        const res = await fetch("http://localhost:8000/api/incidents");
+        const res = await fetch("https://chimera-backend-5jwu.onrender.com/api/incidents");
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.incidents)) {
@@ -113,7 +113,7 @@ export default function IncidentsPage() {
     const targetIp = targetInc?.source_ip || "185.220.101.42";
 
     try {
-      const res = await fetch("http://localhost:8000/api/incidents/contain", {
+      const res = await fetch("https://chimera-backend-5jwu.onrender.com/api/incidents/contain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ incident_id: incidentId, source_ip: targetIp }),
@@ -171,7 +171,7 @@ export default function IncidentsPage() {
     );
 
     try {
-      await fetch("http://localhost:8000/api/incidents/reject", {
+      await fetch("https://chimera-backend-5jwu.onrender.com/api/incidents/reject", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ incident_id: incidentId }),

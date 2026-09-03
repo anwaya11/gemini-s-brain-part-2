@@ -28,7 +28,7 @@ export default function SettingsPage() {
     let isMounted = true;
     async function loadConfig() {
       try {
-        const res = await fetch("http://localhost:8000/api/config");
+        const res = await fetch("https://chimera-backend-5jwu.onrender.com/api/config");
         if (res.ok) {
           const data = await res.json();
           if (isMounted) {
@@ -68,7 +68,7 @@ export default function SettingsPage() {
     setSaveStatus("saving");
 
     try {
-      await fetch("http://localhost:8000/api/config", {
+      await fetch("https://chimera-backend-5jwu.onrender.com/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
