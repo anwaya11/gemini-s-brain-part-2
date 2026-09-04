@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # LLM configuration
 # ---------------------------------------------------------------------------
 
-_GROQ_MODEL = os.getenv("GROQ_MODEL", getattr(settings, "GROQ_MODEL", "llama-3.1-8b-instant"))
+_GROQ_MODEL = os.getenv("GROQ_MODEL", getattr(settings, "GROQ_MODEL", "llama3-8b-8192"))
 
 _SYSTEM_PROMPT = """\
 You are CHIMERA Forensics — an elite SOC reporting analyst AI embedded in
