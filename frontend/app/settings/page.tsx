@@ -207,7 +207,7 @@ export default function SettingsPage() {
               </span>
               <div className="flex justify-between text-white/80">
                 <span>LLM Engine:</span>
-                <span className="text-[#00f0ff] font-bold">Groq Llama-3.3-70b / Lyzr</span>
+                <span className="text-[#00f0ff] font-bold">Groq Llama-3.1-8b / Lyzr</span>
               </div>
               <div className="flex justify-between text-white/80">
                 <span>Database Backend:</span>

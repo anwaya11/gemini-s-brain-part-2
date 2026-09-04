@@ -13,7 +13,7 @@ EdgeFilter, it returns a structured JSON triage verdict containing:
         "reasoning":       str    # one-sentence rationale (bonus field)
     }
 
-LLM provider: Groq (llama-3.3-70b-versatile) — the groq package is already
+LLM provider: Groq (llama-3.1-8b-instant) — the groq package is already
 in requirements.txt.  The `_call_llm` helper can be swapped for any provider
 (Lyzr, Gemini, OpenAI) by changing only that function.
 """
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # LLM configuration
 # ---------------------------------------------------------------------------
 
-_GROQ_MODEL = os.getenv("GROQ_MODEL", getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile"))
+_GROQ_MODEL = os.getenv("GROQ_MODEL", getattr(settings, "GROQ_MODEL", "llama-3.1-8b-instant"))
 
 _SYSTEM_PROMPT = """\
 You are CHIMERA Triage — a senior SOC analyst AI embedded in an autonomous

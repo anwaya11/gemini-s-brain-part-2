@@ -87,7 +87,7 @@ export function AskTheSoc({ incidentId, incident, className }: AskTheSocProps) {
         id: `qa-${Date.now()}`,
         query: q,
         answer: data.answer || "No response returned from explainability agent.",
-        model: data.model || "llama-3.3-70b-versatile",
+        model: data.model || "llama-3.1-8b-instant",
         timestamp: timeNow,
       };
 
@@ -164,7 +164,7 @@ export function AskTheSoc({ incidentId, incident, className }: AskTheSocProps) {
 
         <div className="hidden sm:flex items-center gap-2 text-[10px] text-white/40">
           <Bot className="w-3.5 h-3.5 text-[#00f0ff]" />
-          <span>GROQ / LLAMA-3.3-70B</span>
+          <span>GROQ / LLAMA-3.1-8B</span>
         </div>
       </div>
 
