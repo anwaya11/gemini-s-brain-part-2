@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     ABUSEIPDB_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
-    GROQ_MODEL: str = "llama3-8b-8192"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
 
     model_config = SettingsConfigDict(
         env_file=[str(p) for p in ENV_FILES] if ENV_FILES else None,

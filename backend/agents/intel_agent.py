@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # LLM configuration
 # ---------------------------------------------------------------------------
 
-_GROQ_MODEL = os.getenv("GROQ_MODEL", getattr(settings, "GROQ_MODEL", "llama3-8b-8192"))
+_GROQ_MODEL = os.getenv("GROQ_MODEL", getattr(settings, "GROQ_MODEL", "openai/gpt-oss-20b"))
 
 _SYNTHESIS_SYSTEM_PROMPT = """\
 You are CHIMERA Intel — a threat-intelligence analyst AI.

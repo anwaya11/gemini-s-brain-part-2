@@ -87,7 +87,7 @@ export function AskTheSoc({ incidentId, incident, className }: AskTheSocProps) {
         id: `qa-${Date.now()}`,
         query: q,
         answer: data.answer || "No response returned from explainability agent.",
-        model: data.model || "llama3-8b-8192",
+        model: data.model || "openai/gpt-oss-20b",
         timestamp: timeNow,
       };
 
@@ -164,7 +164,7 @@ export function AskTheSoc({ incidentId, incident, className }: AskTheSocProps) {
 
         <div className="hidden sm:flex items-center gap-2 text-[10px] text-white/40">
           <Bot className="w-3.5 h-3.5 text-[#00f0ff]" />
-          <span>GROQ / LLAMA3-8B-8192</span>
+          <span>GROQ / GPT-OSS-20B</span>
         </div>
       </div>
 
