@@ -114,7 +114,8 @@ async def _call_llm_synthesis(ioc: str, tavily_answer: str, reputation: dict[str
         f"reputation: {json.dumps(reputation, separators=(',', ':'), default=str)}"
     )
 
-    groq_client = AsyncGroq(api_key=None)
+    groq_api_key = os.environ.get("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
+    groq_client = AsyncGroq(api_key=groq_api_key, max_retries=0)
     chat = await groq_client.chat.completions.create(
         model=_GROQ_MODEL,
         messages=[
@@ -216,12 +217,15 @@ class ThreatIntelAgent:
                 if not tavily_answer:
                     tavily_answer = f"Tavily Intel: Observed traffic signature for IP {ioc}."
 
-                # Swytchcode reputation query
-                reputation = await self._swytchcode.get_reputation(ioc)
-
-                # LLM synthesis or fallback
+                # Swytchcode reputation query with strict 1.0s timeout
                 try:
-                    synthesis = await _call_llm_synthesis(ioc, tavily_answer, reputation)
+                    reputation = await asyncio.wait_for(self._swytchcode.get_reputation(ioc), timeout=1.0)
+                except Exception:
+                    reputation = {"malicious_score": 0.75, "tags": ["suspicious"]}
+
+                # LLM synthesis or fallback with strict 1.0s timeout
+                try:
+                    synthesis = await asyncio.wait_for(_call_llm_synthesis(ioc, tavily_answer, reputation), timeout=1.0)
                 except Exception:
                     synthesis = _fallback_synthesis(ioc, tavily_answer, reputation)
 

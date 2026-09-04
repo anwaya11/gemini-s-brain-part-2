@@ -275,7 +275,8 @@ class ReportingAgent:
         try:
             if AsyncGroq is None:
                 raise RuntimeError("Groq SDK is not installed in the environment.")
-            groq_client = AsyncGroq(api_key=None)
+            groq_api_key = os.environ.get("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", None)
+            groq_client = AsyncGroq(api_key=groq_api_key, max_retries=0)
             chat = await groq_client.chat.completions.create(
                 model=_GROQ_MODEL,
                 messages=[
@@ -506,7 +507,7 @@ async def explain_incident(
 
     if AsyncGroq is not None and groq_api_key:
         try:
-            groq_client = AsyncGroq(api_key=groq_api_key)
+            groq_client = AsyncGroq(api_key=groq_api_key, max_retries=0)
             chat = await groq_client.chat.completions.create(
                 model=_GROQ_MODEL,
                 messages=[
