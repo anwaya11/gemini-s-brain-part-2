@@ -1,5 +1,6 @@
 import time
 import requests
+import httpx
 
 # ==========================================
 # 1. LYZR CONFIGURATION (FINAL & CORRECTED)
@@ -34,12 +35,19 @@ while True:
             "message": "Simulated incident triage request"
         }
         
-        l_res = requests.post(lyzr_url, headers=lyzr_headers, json=lyzr_payload)
-        
-        if l_res.status_code == 200:
-            print("[+] [Lyzr] HTTP 200 OK - Dashboard Updated!")
-        else:
-            print(f"[-] [Lyzr] Error {l_res.status_code}: {l_res.text[:100]}")
+        try:
+            with httpx.Client(timeout=1.0) as client:
+                l_res = client.post(lyzr_url, headers=lyzr_headers, json=lyzr_payload)
+                if l_res.status_code == 200:
+                    print("[+] [Lyzr] HTTP 200 OK - Dashboard Updated!")
+                else:
+                    print(f"[-] [Lyzr] Error {l_res.status_code}: {l_res.text[:100]}")
+        except httpx.RequestError as req_err:
+            fallback = {"threat_intel": "Fallback data used due to timeout"}
+            print(f"[-] [Lyzr] Timeout/RequestError: {fallback}")
+        except Exception as exc:
+            fallback = {"threat_intel": "Fallback data used due to timeout"}
+            print(f"[-] [Lyzr] Error: {fallback}")
 
 
         # --- PING SWYTCHCODE ---

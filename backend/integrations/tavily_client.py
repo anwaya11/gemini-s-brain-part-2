@@ -44,12 +44,12 @@ def _clean_summary_sentence(text: str) -> str:
     return truncated
 
 
-async def query_tavily_threat_intel(source_ip: str, timeout: float = 2.5) -> str:
+async def query_tavily_threat_intel(source_ip: str, timeout: float = 1.0) -> str:
     """
     Query Tavily Search API for threat intelligence about source_ip.
     Uses query: 'Threat intelligence reputation and botnet reports for IP {source_ip}'
     Returns a clean 1-sentence summary prefixed with 'Tavily Intel: ...'.
-    Guaranteed <= 2.5s execution time with seamless deterministic fallback.
+    Guaranteed <= 1.0s execution time with seamless deterministic fallback.
     """
     query = f"Threat intelligence reputation and botnet reports for IP {source_ip}"
     api_key = settings.TAVILY_API_KEY or "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"
@@ -92,8 +92,8 @@ async def query_tavily_threat_intel(source_ip: str, timeout: float = 2.5) -> str
 
             logger.warning("Tavily API returned status %d for IP %s", resp.status_code, source_ip)
 
-    except (httpx.TimeoutException, asyncio.TimeoutError):
-        logger.warning("Tavily API query timed out (%.1fs limit) for IP %s — using instant fallback", timeout, source_ip)
+    except httpx.RequestError as req_err:
+        logger.warning("Tavily API HTTPX request error (%s) for IP %s — using instant fallback", req_err, source_ip)
     except Exception as exc:
         logger.warning("Tavily API query exception (%s) for IP %s — using instant fallback", exc, source_ip)
 

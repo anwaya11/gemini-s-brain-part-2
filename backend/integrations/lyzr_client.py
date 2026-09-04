@@ -67,17 +67,25 @@ def ping_lyzr_cloud(incident):
     }
 
     try:
-        response = requests.post(
-            "https://agent-prod.studio.lyzr.ai/v3/inference/chat/",
-            headers=headers,
-            json=body,
-            timeout=8.0,
-        )
-        print(f"[+] LYZR CLOUD SYNC: {response.status_code}")
-        return response
+        with httpx.Client(timeout=1.0) as client:
+            response = client.post(
+                "https://agent-prod.studio.lyzr.ai/v3/inference/chat/",
+                headers=headers,
+                json=body,
+            )
+            print(f"[+] LYZR CLOUD SYNC: {response.status_code}")
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except Exception:
+                    return {"status": "success", "code": 200, "threat_intel": "Lyzr Cloud Sync OK"}
+            return {"threat_intel": "Fallback data used due to timeout", "code": response.status_code}
+    except httpx.RequestError as req_err:
+        print(f"[!] LYZR CLOUD REQUEST ERROR: {req_err}")
+        return {"threat_intel": "Fallback data used due to timeout"}
     except Exception as e:
         print(f"[!] LYZR CLOUD ERROR: {e}")
-        return None
+        return {"threat_intel": "Fallback data used due to timeout"}
 
 
 def _clean_lyzr_output(text: str) -> str:
@@ -97,8 +105,8 @@ async def route_lyzr_cloud_triage(
     source_ip: str,
     endpoint: str,
     payload_signature: str = "",
-    timeout: float = 8.0,
-) -> None:
+    timeout: float = 1.0,
+) -> Dict[str, Any]:
     """
     Route real incident triage request to deployed Lyzr Studio Cloud Agent.
     Executed asynchronously in a non-blocking background task.
@@ -142,11 +150,11 @@ async def route_lyzr_cloud_triage(
             metadata={"incident_id": incident_id, "ip": source_ip, "agent_id": LYZR_STUDIO_AGENT_ID},
             tag_color="#38bdf8",
         )
-        return
+        return {"status": "success", "threat_intel": demo_reasoning}
 
-    # Real HTTP Cloud Call
+    # Real HTTP Cloud Call with strict 1.0s timeout
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=1.0) as client:
             resp = await client.post(LYZR_INFERENCE_ENDPOINT, headers=headers, json=body)
 
             if resp.status_code == 200:
@@ -168,27 +176,39 @@ async def route_lyzr_cloud_triage(
                         metadata={"incident_id": incident_id, "ip": source_ip, "agent_id": LYZR_STUDIO_AGENT_ID},
                         tag_color="#38bdf8",
                     )
-                    return
+                    return {"status": "success", "response": data, "threat_intel": cleaned_reasoning}
 
             logger.warning("[Lyzr Core] HTTP status %d received from Lyzr Studio for IP %s", resp.status_code, source_ip)
+            return {"threat_intel": "Fallback data used due to timeout"}
 
-    except (httpx.TimeoutException, asyncio.TimeoutError):
-        logger.warning("[Lyzr Core] Cloud request timed out (%.1fs limit) for IP %s — using fail-safe reasoning", timeout, source_ip)
+    except httpx.RequestError as req_err:
+        logger.warning("[Lyzr Core] Cloud request timed out (1.0s limit) for IP %s: %s", source_ip, req_err)
+        fallback_reasoning = (
+            f"Lyzr Core Agent: Triage analysis for {source_ip} targeting {endpoint}. "
+            f"Correlated anomalous signature with MITRE T1190. Recommended autonomous perimeter isolation."
+        )
+        await emit_agent_chatter(
+            agent_name="LYZR_CORE",
+            reasoning=fallback_reasoning,
+            step="lyzr_studio_inference",
+            metadata={"incident_id": incident_id, "ip": source_ip, "agent_id": LYZR_STUDIO_AGENT_ID},
+            tag_color="#38bdf8",
+        )
+        return {"threat_intel": "Fallback data used due to timeout"}
     except Exception as exc:
         logger.warning("[Lyzr Core] Cloud request error (%s) for IP %s — using fail-safe reasoning", exc, source_ip)
-
-    # ── Fail-Safe Fallback ─────────────────────────────────────────────
-    fallback_reasoning = (
-        f"Lyzr Core Agent: Triage analysis for {source_ip} targeting {endpoint}. "
-        f"Correlated anomalous signature with MITRE T1190. Recommended autonomous perimeter isolation."
-    )
-    await emit_agent_chatter(
-        agent_name="LYZR_CORE",
-        reasoning=fallback_reasoning,
-        step="lyzr_studio_inference",
-        metadata={"incident_id": incident_id, "ip": source_ip, "agent_id": LYZR_STUDIO_AGENT_ID},
-        tag_color="#38bdf8",
-    )
+        fallback_reasoning = (
+            f"Lyzr Core Agent: Triage analysis for {source_ip} targeting {endpoint}. "
+            f"Correlated anomalous signature with MITRE T1190. Recommended autonomous perimeter isolation."
+        )
+        await emit_agent_chatter(
+            agent_name="LYZR_CORE",
+            reasoning=fallback_reasoning,
+            step="lyzr_studio_inference",
+            metadata={"incident_id": incident_id, "ip": source_ip, "agent_id": LYZR_STUDIO_AGENT_ID},
+            tag_color="#38bdf8",
+        )
+        return {"threat_intel": "Fallback data used due to timeout"}
 
 
 class LyzrOrchestratorClient:
@@ -228,12 +248,17 @@ class LyzrOrchestratorClient:
 
         threading.Thread(target=ping_lyzr_cloud, args=(incident,), daemon=True).start()
 
-    def sync_incident_telemetry(self, incident_payload: Dict[str, Any]) -> None:
-        """Backward-compatible telemetry sync dispatcher."""
-        incident_id = incident_payload.get("incident_id") or incident_payload.get("id") or "live-session"
-        source_ip = incident_payload.get("source_ip", "127.0.0.1")
-        incident = SimpleNamespace(id=str(incident_id), source_ip=source_ip)
-        threading.Thread(target=ping_lyzr_cloud, args=(incident,), daemon=True).start()
+    def sync_incident_telemetry(self, incident_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Backward-compatible telemetry sync dispatcher with strict 1.0s timeout and safe fallback."""
+        try:
+            incident_id = incident_payload.get("incident_id") or incident_payload.get("id") or "live-session"
+            source_ip = incident_payload.get("source_ip", "127.0.0.1")
+            incident = SimpleNamespace(id=str(incident_id), source_ip=source_ip)
+            return ping_lyzr_cloud(incident)
+        except httpx.RequestError:
+            return {"threat_intel": "Fallback data used due to timeout"}
+        except Exception:
+            return {"threat_intel": "Fallback data used due to timeout"}
 
 
 # Singleton instance

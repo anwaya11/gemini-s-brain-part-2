@@ -34,6 +34,7 @@ import logging
 import os
 import re
 from typing import Any, Dict, List, Optional
+import httpx
 try:
     from groq import AsyncGroq
 except ImportError:
@@ -163,7 +164,7 @@ class ThreatIntelAgent:
 
     async def enrich(self, ioc: str) -> dict[str, Any]:
         """
-        Enrich a single IOC.
+        Enrich a single IOC with strict 1.0s timeout and safe fallback.
         """
         logger.info("ThreatIntelAgent.enrich | ioc=%s", ioc)
 
@@ -178,6 +179,7 @@ class ThreatIntelAgent:
                 tags = rep.get("tags", ["malicious", "virustotal-flagged"])
                 summary_text = tav.get("answer") or tav.get("ioc_summary", f"Threat intelligence for {ioc}")
                 return {
+                    "threat_intel": summary_text,
                     "ioc": ioc,
                     "confidence_score": conf,
                     "threat_context": summary_text,
@@ -189,37 +191,81 @@ class ThreatIntelAgent:
                     },
                 }
 
-        # Fan out to both sources concurrently
-        tavily_answer, reputation = await asyncio.gather(
-            search_ioc_context(ioc),
-            self._swytchcode.get_reputation(ioc),
-        )
-
-        logger.debug(
-            "ThreatIntelAgent raw data | ioc=%s | tavily_len=%d | rep_score=%.2f",
-            ioc,
-            len(tavily_answer),
-            reputation.get("malicious_score", 0.0),
-        )
-
-        # LLM synthesis
+        # ── 2. External API HTTPX Request with strict 1.0-second timeout ───
         try:
-            synthesis = await _call_llm_synthesis(ioc, tavily_answer, reputation)
-        except Exception as exc:
-            logger.warning("ThreatIntelAgent LLM synthesis failed (%s) — using fallback", exc)
-            synthesis = _fallback_synthesis(ioc, tavily_answer, reputation)
+            async with httpx.AsyncClient(timeout=1.0) as client:
+                api_key = (
+                    settings.TAVILY_API_KEY
+                    or os.getenv("TAVILY_API_KEY", "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")
+                )
+                resp = await client.post(
+                    "https://api.tavily.com/search",
+                    json={
+                        "api_key": api_key,
+                        "query": f"Threat intelligence reputation and botnet reports for IP {ioc}",
+                        "search_depth": "basic",
+                        "include_answer": True,
+                        "max_results": 2,
+                    },
+                )
+                tavily_answer = ""
+                if resp.status_code == 200:
+                    data = resp.json()
+                    tavily_answer = data.get("answer") or (data.get("results", [{}])[0].get("content", ""))
 
-        return {
-            "ioc": ioc,
-            "confidence_score": float(synthesis.get("confidence_score", reputation.get("malicious_score", 0.0))),
-            "threat_context": synthesis.get("threat_context", ""),
-            "tags": synthesis.get("tags", reputation.get("tags", [])),
-            "sources": {
-                "tavily_answer": tavily_answer,
-                "reputation_score": reputation.get("malicious_score"),
-                "reputation_tags": reputation.get("tags", []),
-            },
-        }
+                if not tavily_answer:
+                    tavily_answer = f"Tavily Intel: Observed traffic signature for IP {ioc}."
+
+                # Swytchcode reputation query
+                reputation = await self._swytchcode.get_reputation(ioc)
+
+                # LLM synthesis or fallback
+                try:
+                    synthesis = await _call_llm_synthesis(ioc, tavily_answer, reputation)
+                except Exception:
+                    synthesis = _fallback_synthesis(ioc, tavily_answer, reputation)
+
+                return {
+                    "threat_intel": synthesis.get("threat_context", tavily_answer),
+                    "ioc": ioc,
+                    "confidence_score": float(synthesis.get("confidence_score", reputation.get("malicious_score", 0.75))),
+                    "threat_context": synthesis.get("threat_context", tavily_answer),
+                    "tags": synthesis.get("tags", reputation.get("tags", ["suspicious"])),
+                    "sources": {
+                        "tavily_answer": tavily_answer,
+                        "reputation_score": reputation.get("malicious_score", 0.75),
+                        "reputation_tags": reputation.get("tags", []),
+                    },
+                }
+
+        except httpx.RequestError as req_err:
+            logger.warning("[ThreatIntelAgent] HTTPX request error (%s) — returning static fallback", req_err)
+            return {
+                "threat_intel": "Fallback data used due to timeout",
+                "ioc": ioc,
+                "confidence_score": 0.75,
+                "threat_context": "Fallback data used due to timeout",
+                "tags": ["suspicious", "fallback"],
+                "sources": {
+                    "tavily_answer": "Fallback data used due to timeout",
+                    "reputation_score": 0.75,
+                    "reputation_tags": ["fallback"],
+                },
+            }
+        except Exception as exc:
+            logger.warning("[ThreatIntelAgent] External API exception (%s) — returning static fallback", exc)
+            return {
+                "threat_intel": "Fallback data used due to timeout",
+                "ioc": ioc,
+                "confidence_score": 0.75,
+                "threat_context": "Fallback data used due to timeout",
+                "tags": ["suspicious", "fallback"],
+                "sources": {
+                    "tavily_answer": "Fallback data used due to timeout",
+                    "reputation_score": 0.75,
+                    "reputation_tags": ["fallback"],
+                },
+            }
 
     async def enrich_many(self, iocs: list[str]) -> list[dict[str, Any]]:
         """

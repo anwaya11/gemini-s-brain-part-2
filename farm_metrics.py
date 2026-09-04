@@ -60,13 +60,12 @@ def ping_lyzr_cloud():
         "message": "Analyze incoming network telemetry probe for MITRE T1190 compliance",
     }
     try:
-        if USE_HTTPX:
-            with httpx.Client(timeout=3.5) as client:
-                return client.post(LYZR_ENDPOINT, headers=headers, json=payload)
-        else:
-            return requests.post(LYZR_ENDPOINT, headers=headers, json=payload, timeout=3.5)
+        with httpx.Client(timeout=1.0) as client:
+            return client.post(LYZR_ENDPOINT, headers=headers, json=payload)
+    except httpx.RequestError:
+        return {"threat_intel": "Fallback data used due to timeout"}
     except Exception:
-        return None
+        return {"threat_intel": "Fallback data used due to timeout"}
 
 
 def ping_swytchcode_cloud():

@@ -116,7 +116,7 @@ async def run_soc_workflow(
     # ------------------------------------------------------------------
     # 1. Query Tavily Search API directly with query & 2.5s timeout
     try:
-        tavily_intel_summary = await query_tavily_threat_intel(source_ip=source_ip, timeout=2.5)
+        tavily_intel_summary = await query_tavily_threat_intel(source_ip=source_ip, timeout=1.0)
     except Exception as tav_err:
         logger.warning("[Tavily] Query fallback note: %s", tav_err)
         tavily_intel_summary = f"Tavily Intel: Known malicious scanning source mapped to MITRE T1190 from IP {source_ip}."
